@@ -112,6 +112,11 @@ class Bot:
             if user_id not in self.admins:
                 self.send(chat_id, "Seuls les administrateurs peuvent ajouter des films.")
                 return
+            existing = self.catalogue.published_file(self.channel_id, media["file_unique_id"])
+            if existing:
+                film_id, title, message_id = existing
+                self.show_duplicate(chat_id, film_id, title, message_id)
+                return
             title = film_title(message, media)
             if not title:
                 self.send(chat_id, "Telegram n’a pas fourni le nom du fichier. "
@@ -172,14 +177,24 @@ class Bot:
                 member.get("status") == "administrator" and member.get("can_post_messages")):
             self.send(chat_id, "Tu dois aussi avoir le droit de publier dans le canal.")
             return
-        if self.catalogue.channel_message(self.channel_id, film_id):
-            self.send(chat_id, "Ce film est déjà indexé dans le canal.")
+        message_id = self.catalogue.channel_message(self.channel_id, film_id)
+        if message_id:
+            self.show_duplicate(chat_id, film_id, film[2], message_id)
             return
         file_id, kind, title = film
         sent = self.api.call("sendVideo" if kind == "video" else "sendDocument",
                              chat_id=self.channel_id, caption=title, **{kind: file_id})
         self.catalogue.link_channel(self.channel_id, film_id, sent["message_id"])
         self.send(chat_id, "Film publié dans le canal.")
+
+    def show_duplicate(self, chat_id, film_id, title, message_id):
+        channel = str(self.channel_id)
+        # Les liens t.me/c utilisent l’identifiant sans le préfixe Bot API -100.
+        url = f"https://t.me/c/{channel[4:]}/{message_id}"
+        self.send(chat_id, f"♻️ Ce film est déjà disponible dans le canal.\n\n"
+                  f"🎬 {title}\nNuméro : {film_id}\n\nIl n’a pas été republié.",
+                  reply_markup={"inline_keyboard": [[
+                      {"text": "🎬 Voir le film dans le canal", "url": url}]]})
 
     def list_films(self, chat_id, query="", page=0):
         rows = self.catalogue.search(query, page)

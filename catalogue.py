@@ -55,6 +55,12 @@ class Catalogue:
                               (channel_id, film_id)).fetchone()
         return row[0] if row else None
 
+    def published_file(self, channel_id, unique_id):
+        return self.db.execute("""SELECT films.id, films.title, channel_films.message_id
+            FROM films JOIN channel_films ON channel_films.film_id=films.id
+            WHERE channel_films.channel_id=? AND films.unique_id=?""",
+            (channel_id, unique_id)).fetchone()
+
     def link_channel(self, channel_id, film_id, message_id):
         with self.db:
             # Un remplacement de fichier dans un message retire l’ancienne association.

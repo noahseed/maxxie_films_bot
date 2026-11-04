@@ -16,11 +16,21 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 - `/catalogue` : parcourir les films, dix par page.
 - `/recherche titre` : recherche insensible aux accents et à la casse.
 - `/film numéro` : recevoir un film.
-- Administrateurs : envoyer une vidéo pour la publier automatiquement ; renvoyer le même fichier met à jour son entrée sans le republier s’il est déjà indexé dans le canal.
+- Administrateurs : envoyer une vidéo pour la publier automatiquement ; renvoyer un
+  fichier déjà indexé dans le canal affiche son titre et un bouton **Voir le film
+  dans le canal**, sans le republier ni modifier son titre enregistré.
 - `/supprimer numéro` : retirer une entrée (administrateurs uniquement).
 - `/publier numéro` : publier un film dans `@maxxie_films` (administrateur du bot
   disposant aussi du droit de publier dans le canal). Un film déjà indexé dans le
   canal n’est pas republié.
+
+La détection des doublons utilise l’identifiant unique de fichier Telegram, même
+si le fichier est renommé ou envoyé comme document vidéo. Elle s’applique aux
+messages connus du bot dans le canal configuré. Deux fichiers différents portant
+le même titre ne sont pas bloqués : il peut s’agir de versions distinctes. Un
+fichier réencodé peut donc ne pas être reconnu. Si le message a été supprimé de
+Telegram, le lien peut être périmé ; retirer l’entrée avec `/supprimer` pour
+permettre une nouvelle publication.
 
 Seuls `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` accèdent au catalogue privé du bot.
 Le canal public reste accessible selon ses propres règles Telegram.

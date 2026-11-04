@@ -79,6 +79,36 @@ class ChannelTests(unittest.TestCase):
         sends = [c for c in self.api.call.call_args_list if c.args[0] == 'sendVideo']
         self.assertEqual(len(sends), 1)
         self.assertEqual(sends[0].kwargs['chat_id'], -100123)
+        notice = self.api.call.call_args.kwargs
+        self.assertIn('Un film', notice['text'])
+        self.assertEqual(notice['reply_markup']['inline_keyboard'][0][0]['url'],
+                         'https://t.me/c/123/80')
+
+    def test_duplicate_upload_preserves_published_title_and_links_to_original(self):
+        film_id = self.store.add(self.media, 'video', 'Titre original')
+        self.store.link_channel(-100123, film_id, 42)
+        self.bot.handle({'message': {'from': {'id': 1}, 'chat': {'id': 1, 'type': 'private'},
+            'video': {**self.media, 'file_name': 'Nouveau nom.mp4'}}})
+        self.assertEqual(self.store.get(film_id)[2], 'Titre original')
+        self.assertEqual(self.api.call.call_count, 1)
+        notice = self.api.call.call_args
+        self.assertEqual(notice.args[0], 'sendMessage')
+        self.assertIn('Titre original', notice.kwargs['text'])
+        self.assertEqual(notice.kwargs['reply_markup']['inline_keyboard'][0][0]['url'],
+                         'https://t.me/c/123/42')
+
+    def test_duplicate_document_without_title_is_recognized(self):
+        film_id = self.store.add(self.media, 'video', 'Film connu')
+        self.store.link_channel(-100123, film_id, 42)
+        self.bot.handle({'message': {'from': {'id': 1}, 'chat': {'id': 1, 'type': 'private'},
+            'document': {**self.media, 'mime_type': 'video/mp4'}}})
+        self.assertIn('déjà disponible', self.api.call.call_args.kwargs['text'])
+
+    def test_same_title_different_file_is_not_treated_as_exact_duplicate(self):
+        film_id = self.store.add(self.media, 'video', 'Un film')
+        self.store.link_channel(-100123, film_id, 42)
+        self.assertIsNone(self.store.published_file(-100123, 'another-file'))
+        self.assertIsNone(self.store.published_file(-100999, self.media['file_unique_id']))
 
     def test_admin_without_channel_rights_cannot_publish(self):
         self.store.add(self.media, 'video', 'Un film')
