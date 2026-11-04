@@ -37,7 +37,7 @@ class MembershipTests(unittest.TestCase):
                 ({'status': 'administrator'}, True), ({'status': 'restricted', 'is_member': True}, True),
                 ({'status': 'left'}, False), ({'status': 'kicked'}, False),
                 ({'status': 'restricted', 'is_member': False}, False), ({}, False)]:
-            for route in ('film:1', 'rejoindre:1', '/film 1'):
+            for route in ('film:1', 'rejoindre:1'):
                 with self.subTest(member=member, route=route):
                     self.member = member
                     self.api.reset_mock()

@@ -92,6 +92,7 @@ class Bot:
         command, _, argument = text.partition(" ")
         command = command.split("@", 1)[0].lower()
         if not self.check_membership(chat_id):
+            self.catalogue.clear_contact(user_id)
             return
         if not callback and command == "/id":
             self.send(chat_id, f"Ton identifiant Telegram : {user_id}")
@@ -102,7 +103,17 @@ class Bot:
             return
         if callback:
             data = callback.get("data", "")
-            if data == "catalogue":
+            self.catalogue.clear_contact(user_id)
+            if data == "contact":
+                if not self.notify_chat_id:
+                    self.send(chat_id, "Le contact est momentanément indisponible.")
+                    return
+                self.catalogue.request_contact(user_id)
+                self.send(chat_id, "✉️ Envoie ton message : il sera transmis en privé à l’administrateur. "
+                          "Tu peux aussi joindre une photo, une vidéo ou un fichier. "
+                          "Reviens au menu pour terminer (expiration après 15 minutes d’inactivité).",
+                          reply_markup={"inline_keyboard": [[{"text": "Annuler", "callback_data": "menu"}]]})
+            elif data == "catalogue":
                 self.show_menu(chat_id, user_id)
             elif data in ("aide", "menu", "abonnement"):
                 self.show_menu(chat_id, user_id)
@@ -117,6 +128,11 @@ class Bot:
                 self.deliver(chat_id, data[5:])
             elif data.startswith("page:") and data[5:].isdigit():
                 self.show_menu(chat_id, user_id)
+            return
+        if text.startswith("/"):
+            self.catalogue.clear_contact(user_id)
+        elif self.catalogue.contact_pending(user_id):
+            self.send_contact(chat_id, message)
             return
         media, kind = video_media(message)
         if media:
@@ -153,8 +169,6 @@ class Bot:
                 self.list_films(chat_id, argument.strip()[:200])
             else:
                 self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.")
-        elif command == "/film":
-            self.deliver(chat_id, argument.strip())
         elif command in ("/publier", "/supprimer"):
             self.show_menu(chat_id, user_id)
         elif text and not text.startswith("/"):
@@ -165,7 +179,33 @@ class Bot:
                   reply_markup={"inline_keyboard": [
                       [{"text": "🔎 Rechercher un film", "callback_data": "recherche"},
                        {"text": "❓ Aide", "callback_data": "aide"}],
+                      [{"text": "✉️ Contact", "callback_data": "contact"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}]]})
+
+    def send_contact(self, chat_id, message):
+        # Garder le mode contact pour les messages suivants, y compris un album.
+        # Le curseur des mises à jour est enregistré avant tout envoi.
+        self.catalogue.request_contact(chat_id)
+        user = message.get("from", {})
+        name = " ".join(str(user.get(key, "")) for key in ("first_name", "last_name")).strip()
+        username = user.get("username")
+        try:
+            if not self.notify_chat_id:
+                raise TelegramError(0)
+            self.send(self.notify_chat_id,
+                      f"✉️ Message de contact Maxxie Films\n\nNom : {name[:200] or 'Non renseigné'}\n"
+                      f"Pseudo : {'@' + username if username else 'Non renseigné'}\nIdentifiant : {chat_id}")
+            self.api.call("copyMessage", chat_id=self.notify_chat_id,
+                          from_chat_id=chat_id, message_id=message["message_id"])
+        except TelegramError as error:
+            LOG.warning("Message de contact non confirmé (code %s).", error.code)
+            self.send(chat_id, "La transmission de ton message n’a pas pu être confirmée. "
+                      "Tu peux réessayer avec le bouton Contact.",
+                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+            return
+        self.send(chat_id, "✅ Ton message a été transmis à l’administrateur. "
+                  "Tu peux écrire un autre message ou revenir au menu.",
+                  reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
 
     def notify_new_visitor(self, user):
         user_id = user["id"]

@@ -23,7 +23,7 @@ class BotTests(unittest.TestCase):
     def test_admin_adds_and_reader_receives(self):
         film_id = self.store.add(self.media, 'video', 'Un film')
         self.store.link_channel(-100123, film_id, 50)
-        self.bot.handle(message(2, text='/film 1'))
+        self.bot.handle({'callback_query': {'id': 'q', 'from': {'id': 2}, 'data': 'film:1', 'message': {'chat': {'id': 2, 'type': 'private'}}}})
         self.assertEqual(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
 
     def test_reader_cannot_add_or_remove(self):
@@ -64,7 +64,7 @@ class BotTests(unittest.TestCase):
         self.assertEqual(self.store.search(), [])
         self.bot.handle(message(document=media, caption='Film MKV'))
         self.store.link_channel(-100123, 1, 50)
-        self.bot.handle(message(2, text='/film 1'))
+        self.bot.handle({'callback_query': {'id': 'q', 'from': {'id': 2}, 'data': 'film:1', 'message': {'chat': {'id': 2, 'type': 'private'}}}})
         self.assertEqual(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
 
     def test_legacy_catalogue_command_opens_menu_without_browsing(self):

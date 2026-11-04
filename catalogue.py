@@ -1,6 +1,7 @@
 """Catalogue SQLite : références Telegram uniquement."""
 import sqlite3
 import unicodedata
+import time
 
 
 def normalize(text):
@@ -18,6 +19,8 @@ class Catalogue:
                 title TEXT NOT NULL, search_title TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS visitors (user_id INTEGER PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS contact_requests (
+                user_id INTEGER PRIMARY KEY, expires_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS channel_films (
                 channel_id INTEGER NOT NULL, film_id INTEGER NOT NULL,
                 message_id INTEGER NOT NULL, PRIMARY KEY(channel_id, film_id));
@@ -84,6 +87,20 @@ class Catalogue:
     def remember_visitor(self, user_id):
         with self.db:
             return self.db.execute("INSERT OR IGNORE INTO visitors VALUES(?)", (user_id,)).rowcount == 1
+
+    def request_contact(self, user_id):
+        with self.db:
+            self.db.execute("DELETE FROM contact_requests WHERE expires_at<=?", (int(time.time()),))
+            self.db.execute("INSERT OR REPLACE INTO contact_requests VALUES(?,?)",
+                            (user_id, int(time.time()) + 900))
+
+    def contact_pending(self, user_id):
+        return self.db.execute("SELECT 1 FROM contact_requests WHERE user_id=? AND expires_at>?",
+                               (user_id, int(time.time()))).fetchone() is not None
+
+    def clear_contact(self, user_id):
+        with self.db:
+            self.db.execute("DELETE FROM contact_requests WHERE user_id=?", (user_id,))
 
     def acknowledge(self, update_id):
         with self.db:

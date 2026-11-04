@@ -12,7 +12,7 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 ## Utilisation
 
 Le menu propose **Rechercher un film** et **Aide** côte à côte, puis
-**Rejoindre le canal**. L’option Catalogue a été retirée ; les anciens boutons de
+**Contact** et **Rejoindre le canal**. L’option Catalogue a été retirée ; les anciens boutons de
 catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
 son message dans le canal. Seuls les films indexés dans ce canal sont proposés. La recherche demande simplement de saisir un titre, sans commande.
 Les résultats permettent de revenir au menu.
@@ -25,9 +25,28 @@ Un fichier déjà connu affiche un bouton vers sa publication d’origine.
 
 Les textes affichés ne présentent plus de commandes slash. Les commandes
 historiques restent compatibles, notamment `/start` pour ouvrir le menu initial
-et `/id` pour obtenir son identifiant. Au démarrage, les listes de commandes
+et `/id` pour obtenir son identifiant. La commande `/film numéro` est supprimée
+et ne déclenche plus d’action. Au démarrage, les listes de commandes
 Telegram par défaut et pour les conversations privées sont supprimées pour la
 langue par défaut et le français.
+
+## Contact privé
+
+Le bouton **Contact** invite à écrire un message ou à envoyer une pièce jointe.
+Le bot transmet au compte `NOTIFY_CHAT_ID` un en-tête avec le nom, le pseudo
+éventuel et l’identifiant de l’expéditeur, puis copie son message en privé avec
+`copyMessage`. Une confirmation est affichée seulement si Telegram accepte l’envoi.
+Les types de messages non copiables par Telegram peuvent échouer ; le bot indique
+alors que la transmission n’est pas confirmée, sans nouvel essai automatique.
+
+Les messages suivants restent en mode contact jusqu’à un retour au **Menu**, une
+autre action de navigation, une commande ou 15 minutes d’inactivité. Ce mode est
+conservé après redémarrage dans SQLite (identifiant et expiration uniquement).
+Le texte et les fichiers ne sont pas stockés sur le VPS. Les vidéos envoyées par
+un administrateur en mode contact sont transmises en privé, sans publication dans
+le canal. L’abonnement et les autorisations habituelles sont vérifiés avant chaque
+message. Le bot ne propose pas de réponse automatique de l’administrateur vers
+l’expéditeur.
 
 ## Notifications de nouveaux utilisateurs
 
