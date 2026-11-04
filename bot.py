@@ -10,6 +10,9 @@ from telegram_api import Telegram, TelegramError
 
 LOG = logging.getLogger("maxxie-films")
 HELP = ("🎬 Maxxie Films\n\n"
+        "Bienvenue dans notre coin cinéma ! 🍿\n"
+        "Retrouve les films du catalogue, recherche un titre et reçois-le ici.\n"
+        "Bonne séance !\n\n"
         "/catalogue — derniers films\n"
         "/recherche titre — rechercher un film\n"
         "/film numéro — recevoir un film\n"
