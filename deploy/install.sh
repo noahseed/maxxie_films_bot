@@ -10,8 +10,10 @@ if ! id maxxie-films-bot >/dev/null 2>&1; then
     useradd --system --user-group --no-create-home --shell /usr/sbin/nologin maxxie-films-bot
 fi
 install -d -m 755 /opt/maxxie-films-bot
-install -m 644 bot.py catalogue.py telegram_api.py deploy/configure.py /opt/maxxie-films-bot/
-install -m 644 deploy/maxxie-films-bot.service /etc/systemd/system/
+install -m 644 bot.py catalogue.py search.py telegram_api.py backups.py deploy/configure.py /opt/maxxie-films-bot/
+install -d -m 700 /var/backups/maxxie-films-bot
+install -m 644 deploy/maxxie-films-bot.service deploy/maxxie-films-backup.service deploy/maxxie-films-backup.timer /etc/systemd/system/
 systemctl daemon-reload
+systemctl enable --now maxxie-films-backup.timer
 echo 'Fichiers installés. Le service n’a pas été démarré.'
 echo 'Configurer : sudo python3 /opt/maxxie-films-bot/configure.py'

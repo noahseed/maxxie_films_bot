@@ -93,6 +93,7 @@ class Bot:
         command = command.split("@", 1)[0].lower()
         if not self.check_membership(chat_id):
             self.catalogue.clear_contact(user_id)
+            self.catalogue.clear_reply(user_id)
             return
         if not callback and command == "/id":
             self.send(chat_id, f"Ton identifiant Telegram : {user_id}")
@@ -104,7 +105,18 @@ class Bot:
         if callback:
             data = callback.get("data", "")
             self.catalogue.clear_contact(user_id)
-            if data == "contact":
+            self.catalogue.clear_reply(user_id)
+            if data.startswith("repondre:"):
+                target = (self.catalogue.begin_reply(user_id, data.split(":", 1)[1])
+                          if user_id == self.notify_chat_id and user_id in self.admins else None)
+                if not target:
+                    self.send(chat_id, "Cette réponse n’est pas disponible ou a expiré.")
+                    return
+                self.send(chat_id, f"💬 Ta réponse sera transmise à l’utilisateur {target}. "
+                          "Envoie ton texte ou une pièce jointe. Reviens au menu pour terminer "
+                          "(session valable 15 minutes).",
+                          reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+            elif data == "contact":
                 if not self.notify_chat_id:
                     self.send(chat_id, "Le contact est momentanément indisponible.")
                     return
@@ -118,7 +130,8 @@ class Bot:
             elif data in ("aide", "menu", "abonnement"):
                 self.show_menu(chat_id, user_id)
             elif data == "recherche":
-                self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.",
+                self.send(chat_id, "🔎 Envoie un titre, même approximatif. Tu peux préciser "
+                          "une année et une langue : par exemple « Matrix 1999 VF ».",
                           reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
             elif data.startswith("rejoindre:"):
                 self.deliver(chat_id, data.split(":", 1)[1])
@@ -131,6 +144,10 @@ class Bot:
             return
         if text.startswith("/"):
             self.catalogue.clear_contact(user_id)
+            self.catalogue.clear_reply(user_id)
+        elif self.catalogue.reply_target(user_id):
+            self.send_reply(user_id, message)
+            return
         elif self.catalogue.contact_pending(user_id):
             self.send_contact(chat_id, message)
             return
@@ -192,9 +209,12 @@ class Bot:
         try:
             if not self.notify_chat_id:
                 raise TelegramError(0)
+            token = self.catalogue.create_contact_thread(self.notify_chat_id, chat_id)
             self.send(self.notify_chat_id,
                       f"✉️ Message de contact Maxxie Films\n\nNom : {name[:200] or 'Non renseigné'}\n"
-                      f"Pseudo : {'@' + username if username else 'Non renseigné'}\nIdentifiant : {chat_id}")
+                      f"Pseudo : {'@' + username if username else 'Non renseigné'}\nIdentifiant : {chat_id}",
+                      reply_markup={"inline_keyboard": [[
+                          {"text": "💬 Répondre", "callback_data": f"repondre:{token}"}]]})
             self.api.call("copyMessage", chat_id=self.notify_chat_id,
                           from_chat_id=chat_id, message_id=message["message_id"])
         except TelegramError as error:
@@ -205,6 +225,32 @@ class Bot:
             return
         self.send(chat_id, "✅ Ton message a été transmis à l’administrateur. "
                   "Tu peux écrire un autre message ou revenir au menu.",
+                  reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+
+    def send_reply(self, owner_id, message):
+        target = self.catalogue.reply_target(owner_id)
+        if owner_id != self.notify_chat_id or owner_id not in self.admins or not target:
+            self.catalogue.clear_reply(owner_id)
+            self.send(owner_id, "La session de réponse a expiré.")
+            return
+        if target not in self.allowed_users | self.admins:
+            self.send(owner_id, "Cet utilisateur n’a plus accès au bot.")
+            return
+        try:
+            member = self.api.call("getChatMember", chat_id=self.channel_id, user_id=target)
+            if not (member.get("status") in ("creator", "administrator", "member") or
+                    (member.get("status") == "restricted" and member.get("is_member") is True)):
+                self.send(owner_id, "Cet utilisateur doit rejoindre le canal avant de recevoir ta réponse.")
+                return
+            self.send(target, "💬 Réponse de l’administrateur Maxxie Films")
+            self.api.call("copyMessage", chat_id=target, from_chat_id=owner_id,
+                          message_id=message["message_id"])
+        except TelegramError as error:
+            LOG.warning("Réponse de contact non confirmée (code %s).", error.code)
+            self.send(owner_id, "La transmission de ta réponse n’a pas pu être confirmée.",
+                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+            return
+        self.send(owner_id, "✅ Réponse transmise. Tu peux continuer ou revenir au menu.",
                   reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
 
     def notify_new_visitor(self, user):
@@ -276,7 +322,7 @@ class Bot:
         keyboard = [[{"text": f"🎬 {title}"[:64], "url": self.film_link(message_id)}]
                     for _, title, message_id in rows[:10]]
         keyboard.append([MENU_BUTTON])
-        text = "🎬 Ouvre un film dans le canal :"
+        text = "🎬 Titres trouvés ou proches de ta recherche — ouvre le film dans le canal :"
         if len(rows) > 10:
             text += "\nPlus de 10 résultats : précise ta recherche."
         self.send(chat_id, text, reply_markup={"inline_keyboard": keyboard})

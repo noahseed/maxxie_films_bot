@@ -1,0 +1,15 @@
+[Unit]
+Description=Sauvegarde du bot Maxxie Films
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -B /opt/maxxie-films-bot/backups.py
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/maxxie-films-bot
+TimeoutStartSec=120

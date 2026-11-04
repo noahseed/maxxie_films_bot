@@ -2,6 +2,8 @@
 import sqlite3
 import unicodedata
 import time
+import secrets
+from search import ranked_results
 
 
 def normalize(text):
@@ -21,6 +23,11 @@ class Catalogue:
             CREATE TABLE IF NOT EXISTS visitors (user_id INTEGER PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS contact_requests (
                 user_id INTEGER PRIMARY KEY, expires_at INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS contact_threads (
+                token TEXT PRIMARY KEY, owner_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS reply_sessions (
+                owner_id INTEGER PRIMARY KEY, token TEXT NOT NULL, expires_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS channel_films (
                 channel_id INTEGER NOT NULL, film_id INTEGER NOT NULL,
                 message_id INTEGER NOT NULL, PRIMARY KEY(channel_id, film_id));
@@ -50,11 +57,17 @@ class Catalogue:
                                (film_id,)).fetchone()
 
     def search_channel(self, channel_id, query):
-        query = normalize(query).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        return self.db.execute("""SELECT films.id,films.title,channel_films.message_id
+        # Conserver le sens littéral des recherches contenant des caractères spéciaux.
+        if not any(c.isalnum() for c in query):
+            escaped = normalize(query).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            return self.db.execute("""SELECT films.id,films.title,channel_films.message_id
+                FROM films JOIN channel_films ON channel_films.film_id=films.id
+                WHERE channel_films.channel_id=? AND films.search_title LIKE ? ESCAPE '\\'
+                ORDER BY films.id DESC LIMIT 11""", (channel_id, f"%{escaped}%")).fetchall()
+        rows = self.db.execute("""SELECT films.id,films.title,channel_films.message_id
             FROM films JOIN channel_films ON channel_films.film_id=films.id
-            WHERE channel_films.channel_id=? AND films.search_title LIKE ? ESCAPE '\\'
-            ORDER BY films.id DESC LIMIT 11""", (channel_id, f"%{query}%")).fetchall()
+            WHERE channel_films.channel_id=?""", (channel_id,))
+        return ranked_results(rows, query)
 
     def remove(self, film_id):
         with self.db:
@@ -101,6 +114,37 @@ class Catalogue:
     def clear_contact(self, user_id):
         with self.db:
             self.db.execute("DELETE FROM contact_requests WHERE user_id=?", (user_id,))
+
+    def create_contact_thread(self, owner_id, user_id):
+        token = secrets.token_urlsafe(12)
+        now = int(time.time())
+        with self.db:
+            self.db.execute("DELETE FROM contact_threads WHERE expires_at<=?", (now,))
+            self.db.execute("DELETE FROM reply_sessions WHERE expires_at<=?", (now,))
+            self.db.execute("INSERT INTO contact_threads VALUES(?,?,?,?)",
+                            (token, owner_id, user_id, now + 7 * 86400))
+        return token
+
+    def begin_reply(self, owner_id, token):
+        row = self.db.execute("SELECT user_id FROM contact_threads WHERE owner_id=? AND token=? AND expires_at>?",
+                              (owner_id, token, int(time.time()))).fetchone()
+        if row:
+            with self.db:
+                self.db.execute("INSERT OR REPLACE INTO reply_sessions VALUES(?,?,?)",
+                                (owner_id, token, int(time.time()) + 900))
+            return row[0]
+
+    def reply_target(self, owner_id):
+        row = self.db.execute("""SELECT contact_threads.user_id FROM reply_sessions
+            JOIN contact_threads ON reply_sessions.token=contact_threads.token
+            AND reply_sessions.owner_id=contact_threads.owner_id
+            WHERE reply_sessions.owner_id=? AND reply_sessions.expires_at>? AND contact_threads.expires_at>?""",
+            (owner_id, int(time.time()), int(time.time()))).fetchone()
+        return row[0] if row else None
+
+    def clear_reply(self, owner_id):
+        with self.db:
+            self.db.execute("DELETE FROM reply_sessions WHERE owner_id=?", (owner_id,))
 
     def acknowledge(self, update_id):
         with self.db:
