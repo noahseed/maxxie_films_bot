@@ -150,6 +150,15 @@ SQLite. Les demandes sont marquées avant traitement pour éviter de répéter u
 envoi incertain : un arrêt à cet instant peut perdre une demande. L’utilisateur
 peut alors la renouveler. Les erreurs d’envoi ne sont pas rejouées automatiquement.
 
+Les appels Telegram utilisent IPv4 pour éviter les délais intermittents observés
+avec le choix automatique IPv6/IPv4 du VPS. La connexion HTTPS est réutilisée ;
+une connexion inactive depuis plus de 20 secondes est remplacée. Le délai de
+connexion est limité à 3 secondes et celui de lecture à 8 secondes (35 secondes
+pour une réception longue de 30 secondes). Seuls les appels de lecture peuvent
+être retentés une fois après une erreur réseau. Un envoi incertain n’est jamais
+répété automatiquement. Les appels hors long polling dépassant une seconde sont
+journalisés avec la méthode et la durée, sans jeton ni contenu privé.
+
 Les limites d’envoi de Telegram s’appliquent. Les références de fichiers sont
 propres au bot : ajouter les films au nouveau bot. Voir la
 [documentation Telegram](https://core.telegram.org/bots/api#sending-files).
