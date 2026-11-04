@@ -11,25 +11,45 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 
 ## Utilisation
 
-- `/start`, `/aide` : accueil et commandes.
-- `/id` : obtenir son identifiant numérique, même sans accès au catalogue.
-- `/catalogue` : parcourir les films, dix par page.
-- `/recherche titre` : recherche insensible aux accents et à la casse.
-- `/film numéro` : recevoir un film.
-- Administrateurs : envoyer une vidéo pour la publier automatiquement ; renvoyer un
-  fichier déjà indexé dans le canal affiche son titre et un bouton **Voir le film
-  dans le canal**, sans le republier ni modifier son titre enregistré.
-- `/supprimer numéro` : retirer une entrée (administrateurs uniquement).
-- `/publier numéro` : publier un film dans `@maxxie_films` (administrateur du bot
-  disposant aussi du droit de publier dans le canal). Un film déjà indexé dans le
-  canal n’est pas republié.
+Le menu propose des boutons **Catalogue** et **Aide** côte à côte, puis
+**Rechercher un film** et **Rejoindre le canal**. Cliquer sur un titre permet de
+recevoir le film. La recherche demande simplement de saisir un titre, sans commande.
+Les résultats et les messages d’abonnement permettent de revenir au menu.
+
+Les administrateurs voient aussi les boutons **Publier** et **Retirer** sous
+chaque film. Le retrait demande confirmation et conserve le message du canal.
+L’envoi d’une vidéo par un administrateur conserve la publication automatique.
+Un fichier déjà connu affiche un bouton vers sa publication d’origine.
+
+Les textes affichés ne présentent plus de commandes slash. Les commandes
+historiques restent compatibles, notamment `/start` pour ouvrir le menu initial
+et `/id` pour obtenir son identifiant. Au démarrage, les listes de commandes
+Telegram par défaut et pour les conversations privées sont supprimées pour la
+langue par défaut et le français.
+
+## Abonnement obligatoire avant téléchargement
+
+Avant **chaque envoi** de vidéo ou document en privé, le bot interroge Telegram
+pour vérifier que l’utilisateur est membre, administrateur ou propriétaire du
+canal. Le statut restreint est accepté uniquement si `is_member` est vrai.
+Une erreur de vérification bloque l’envoi et propose de réessayer.
+
+Sans abonnement, le bot affiche **Rejoindre le canal**, puis **J’ai rejoint le
+canal**. Ce dernier bouton vérifie à nouveau l’abonnement et envoie le film
+initialement choisi s’il est confirmé. Quitter le canal bloque les téléchargements
+suivants. Les anciens boutons et les commandes historiques passent par la même
+vérification. Les administrateurs du bot n’en sont pas exemptés.
+
+Les listes `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` continuent de limiter l’accès au
+catalogue privé : l’abonnement est une condition supplémentaire. Le bot doit rester
+administrateur du canal pour vérifier les abonnements des autres utilisateurs.
 
 La détection des doublons utilise l’identifiant unique de fichier Telegram, même
 si le fichier est renommé ou envoyé comme document vidéo. Elle s’applique aux
 messages connus du bot dans le canal configuré. Deux fichiers différents portant
 le même titre ne sont pas bloqués : il peut s’agir de versions distinctes. Un
 fichier réencodé peut donc ne pas être reconnu. Si le message a été supprimé de
-Telegram, le lien peut être périmé ; retirer l’entrée avec `/supprimer` pour
+Telegram, le lien peut être périmé ; retirer l’entrée avec le bouton **Retirer** pour
 permettre une nouvelle publication.
 
 Seuls `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` accèdent au catalogue privé du bot.
@@ -50,16 +70,16 @@ pour ouvrir le canal.
 
 L’envoi d’un fichier au bot en privé l’ajoute au catalogue et le publie dans le canal
 si l’expéditeur est administrateur du bot et dispose du droit de publication dans
-le canal. `/publier numéro` permet aussi de publier une entrée existante. Pour indexer un ancien
+le canal. Le bouton **Publier** permet aussi de publier une entrée existante. Pour indexer un ancien
 film sans le republier, un administrateur peut transférer son message du canal
 au bot en privé, avec son titre en légende. Si Telegram masque l’origine, ajouter
 la référence du fichier reste possible, mais le bot ne sait pas qu’il est déjà
 publié. L’API ne permet pas de parcourir automatiquement tout l’historique.
 
-`/supprimer` retire l’entrée du catalogue, sans supprimer le message du canal.
+Le bouton **Retirer** retire l’entrée du catalogue, sans supprimer le message du canal.
 Les suppressions de messages dans Telegram ne sont pas synchronisées. En cas de
 remplacement du fichier d’un message, le nouveau fichier est indexé ; retirer
-l’ancienne entrée avec `/supprimer` si elle n’est plus souhaitée. Les albums sont
+l’ancienne entrée avec **Retirer** si elle n’est plus souhaitée. Les albums sont
 traités fichier par fichier. La prévention des doublons de publication ne garantit
 pas une livraison exactement une fois après une coupure pendant l’envoi.
 

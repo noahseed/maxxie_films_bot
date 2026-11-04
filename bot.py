@@ -11,17 +11,12 @@ from telegram_api import Telegram, TelegramError
 LOG = logging.getLogger("maxxie-films")
 HELP = ("🎬 Maxxie Films\n\n"
         "Bienvenue dans notre coin cinéma ! 🍿\n"
-        "Retrouve les films du catalogue, recherche un titre et reçois-le ici.\n"
-        "Bonne séance !\n\n"
-        "/catalogue — derniers films\n"
-        "/recherche titre — rechercher un film\n"
-        "/film numéro — recevoir un film\n"
-        "/id — ton identifiant Telegram\n"
-        "/aide — afficher ce menu")
-ADMIN_HELP = ("\n\nAdministration : envoie une vidéo ou un fichier vidéo "
-              "pour le publier dans le canal avec son nom de fichier sans .mp4.\n"
-              "/publier numéro — publier un film dans le canal\n"
-              "/supprimer numéro — retirer un film du catalogue")
+        "Choisis un film dans le catalogue ou recherche son titre.\n"
+        "Rejoins le canal pour recevoir les films ici. Bonne séance !")
+ADMIN_HELP = ("\n\nAdministration : envoie une vidéo pour la publier dans le canal "
+              "avec son nom de fichier sans .mp4. Les boutons du catalogue "
+              "permettent aussi de publier ou retirer une entrée.")
+MENU_BUTTON = {"text": "🏠 Menu", "callback_data": "menu"}
 
 
 def video_media(message):
@@ -52,6 +47,12 @@ def verify_channel(api, bot_id, reference):
     if member.get("status") != "administrator" or not member.get("can_post_messages"):
         raise ValueError("Ajoute le bot comme administrateur du canal avec le droit de publier.")
     return channel["id"]
+
+
+def clear_commands(api):
+    for scope in ("default", "all_private_chats"):
+        for language in ("", "fr"):
+            api.call("deleteMyCommands", scope={"type": scope}, language_code=language)
 
 
 class Bot:
@@ -100,8 +101,28 @@ class Bot:
             data = callback.get("data", "")
             if data == "catalogue":
                 self.list_films(chat_id)
-            elif data == "aide":
+            elif data in ("aide", "menu"):
                 self.show_menu(chat_id, user_id)
+            elif data == "recherche":
+                self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.",
+                          reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+            elif data.startswith("rejoindre:"):
+                self.deliver(chat_id, data.split(":", 1)[1])
+            elif data.startswith("publier:") and user_id in self.admins:
+                self.publish(chat_id, data.split(":", 1)[1])
+            elif data.startswith("retirer:") and user_id in self.admins:
+                identifier = data.split(":", 1)[1]
+                if identifier.isdigit() and len(identifier) < 16:
+                    self.send(chat_id, "Retirer ce film du catalogue ? Le message du canal sera conservé.",
+                              reply_markup={"inline_keyboard": [[
+                                  {"text": "Confirmer le retrait", "callback_data": f"confirmer_retrait:{identifier}"},
+                                  MENU_BUTTON]]})
+            elif data.startswith("confirmer_retrait:") and user_id in self.admins:
+                identifier = data.split(":", 1)[1]
+                if identifier.isdigit() and len(identifier) < 16:
+                    removed = self.catalogue.remove(int(identifier))
+                    self.send(chat_id, "Film retiré." if removed else "Film introuvable.",
+                              reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
             elif data.startswith("film:"):
                 self.deliver(chat_id, data[5:])
             elif data.startswith("page:") and data[5:].isdigit():
@@ -141,7 +162,7 @@ class Bot:
             if argument.strip():
                 self.list_films(chat_id, argument.strip()[:200])
             else:
-                self.send(chat_id, "Utilise /recherche titre")
+                self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.")
         elif command == "/film":
             self.deliver(chat_id, argument.strip())
         elif command == "/publier" and user_id in self.admins:
@@ -151,21 +172,24 @@ class Bot:
                 removed = self.catalogue.remove(int(argument.strip()))
                 self.send(chat_id, "Film retiré." if removed else "Film introuvable.")
             else:
-                self.send(chat_id, "Utilise /supprimer numéro")
+                self.send(chat_id, "Choisis un film dans le catalogue pour le retirer.")
+        elif text and not text.startswith("/"):
+            self.list_films(chat_id, text[:200])
 
     def show_menu(self, chat_id, user_id):
         self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
                   reply_markup={"inline_keyboard": [
                       [{"text": "🎬 Catalogue", "callback_data": "catalogue"},
                        {"text": "❓ Aide", "callback_data": "aide"}],
-                      [{"text": "🎬 Ouvrir le canal", "url": "https://t.me/maxxie_films"}]]})
+                      [{"text": "🔎 Rechercher un film", "callback_data": "recherche"}],
+                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}]]})
 
     def publish(self, chat_id, identifier):
         if not self.channel_id:
             self.send(chat_id, "Le canal n’est pas configuré.")
             return
         if not identifier.isdigit() or len(identifier) > 15:
-            self.send(chat_id, "Utilise /publier numéro")
+            self.send(chat_id, "Choisis un film dans le catalogue pour le publier.")
             return
         film_id = int(identifier)
         film = self.catalogue.get(film_id)
@@ -199,10 +223,16 @@ class Bot:
     def list_films(self, chat_id, query="", page=0):
         rows = self.catalogue.search(query, page)
         if not rows:
-            self.send(chat_id, "Aucun film trouvé.")
+            self.send(chat_id, "Aucun film trouvé.", reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
             return
         keyboard = [[{"text": f"🎬 {title}"[:64], "callback_data": f"film:{film_id}"}]
                     for film_id, title in rows[:10]]
+        if chat_id in self.admins:
+            keyboard = []
+            for film_id, title in rows[:10]:
+                keyboard.append([{"text": f"🎬 {title}"[:64], "callback_data": f"film:{film_id}"}])
+                keyboard.append([{"text": "📢 Publier", "callback_data": f"publier:{film_id}"},
+                                 {"text": "🗑 Retirer", "callback_data": f"retirer:{film_id}"}])
         navigation = []
         if not query:
             if page:
@@ -211,6 +241,7 @@ class Bot:
                 navigation.append({"text": "Suivants →", "callback_data": f"page:{page+1}"})
         if navigation:
             keyboard.append(navigation)
+        keyboard.append([MENU_BUTTON])
         text = "Choisis un film :"
         if query and len(rows) > 10:
             text += "\nPlus de 10 résultats : précise ta recherche."
@@ -218,15 +249,37 @@ class Bot:
 
     def deliver(self, chat_id, identifier):
         if not identifier.isdigit() or len(identifier) > 15:
-            self.send(chat_id, "Utilise /film numéro")
+            self.send(chat_id, "Choisis un film dans le catalogue.")
             return
         film = self.catalogue.get(int(identifier))
         if not film:
             self.send(chat_id, "Film introuvable.")
             return
+        if not self.check_membership(chat_id, identifier):
+            return
         file_id, kind, title = film
         self.api.call("sendVideo" if kind == "video" else "sendDocument",
                       chat_id=chat_id, caption=title, **{kind: file_id})
+
+    def check_membership(self, chat_id, identifier):
+        try:
+            if not self.channel_id:
+                raise TelegramError(0)
+            member = self.api.call("getChatMember", chat_id=self.channel_id, user_id=chat_id)
+        except TelegramError:
+            self.send(chat_id, "La vérification de ton abonnement est momentanément indisponible. Réessaie dans un instant.",
+                      reply_markup={"inline_keyboard": [[
+                          {"text": "🔄 Réessayer", "callback_data": f"rejoindre:{identifier}"}], [MENU_BUTTON]]})
+            return False
+        if member.get("status") in ("creator", "administrator", "member") or (
+                member.get("status") == "restricted" and member.get("is_member") is True):
+            return True
+        self.send(chat_id, "🔒 Rejoins le canal Maxxie Films pour télécharger ce film, puis vérifie ton abonnement.",
+                  reply_markup={"inline_keyboard": [
+                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
+                      [{"text": "✅ J’ai rejoint le canal", "callback_data": f"rejoindre:{identifier}"}],
+                      [MENU_BUTTON]]})
+        return False
 
 
 def user_ids(value):
@@ -265,6 +318,7 @@ def main():
                     bot.channel_id = verify_channel(api, identity["id"], os.environ.get("CHANNEL_ID", "@maxxie_films"))
                 except ValueError as error:
                     raise SystemExit(str(error)) from None
+                clear_commands(api)
                 ready = True
                 LOG.info("Bot vérifié ; réception des messages.")
             updates = api.call("getUpdates", offset=store.offset(), timeout=30,

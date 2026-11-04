@@ -12,14 +12,16 @@ class BotTests(unittest.TestCase):
     def setUp(self):
         self.api = Mock()
         self.store = Catalogue(':memory:')
-        self.bot = Bot(self.api, self.store, {1}, {2})
+        self.bot = Bot(self.api, self.store, {1}, {2}, -100123)
+        self.api.call.side_effect = lambda method, **params: (
+            {'status': 'member'} if method == 'getChatMember' else {'message_id': 100})
         self.media = {'file_id': 'file', 'file_unique_id': 'unique'}
 
     def tearDown(self):
         self.store.db.close()
 
     def test_admin_adds_and_reader_receives(self):
-        self.bot.handle(message(video=self.media, caption='Un film'))
+        self.store.add(self.media, 'video', 'Un film')
         self.bot.handle(message(2, text='/film 1'))
         self.api.call.assert_called_with('sendVideo', chat_id=2, video='file', caption='Un film')
 
@@ -56,10 +58,12 @@ class BotTests(unittest.TestCase):
         self.api.call.assert_not_called()
 
     def test_document_and_missing_caption(self):
+        self.bot.channel_id = None
         media = {**self.media, 'mime_type': 'video/x-matroska'}
         self.bot.handle(message(document=media))
         self.assertEqual(self.store.search(), [])
         self.bot.handle(message(document=media, caption='Film MKV'))
+        self.bot.channel_id = -100123
         self.bot.handle(message(2, text='/film 1'))
         self.api.call.assert_called_with('sendDocument', chat_id=2, document='file', caption='Film MKV')
 
@@ -68,8 +72,8 @@ class BotTests(unittest.TestCase):
             self.store.add({'file_id': str(number), 'file_unique_id': str(number)}, 'video', str(number))
         self.bot.handle(message(2, text='/catalogue'))
         keyboard = self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']
-        self.assertEqual(len(keyboard), 11)
-        self.assertEqual(keyboard[-1][0]['callback_data'], 'page:1')
+        self.assertEqual(len(keyboard), 12)
+        self.assertEqual(keyboard[-2][0]['callback_data'], 'page:1')
 
 
 if __name__ == '__main__':
