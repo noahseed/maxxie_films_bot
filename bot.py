@@ -17,18 +17,48 @@ HELP = ("🎬 Maxxie Films\n\n"
         "/aide — afficher ce menu")
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo ou un fichier vidéo "
               "avec son titre en légende pour l’ajouter.\n"
+              "/publier numéro — publier un film dans le canal\n"
               "/supprimer numéro — retirer un film du catalogue")
 
 
+def video_media(message):
+    if message.get("video"):
+        return message["video"], "video"
+    document = message.get("document", {})
+    if document.get("mime_type", "").startswith("video/"):
+        return document, "document"
+    return None, None
+
+
+def verify_channel(api, bot_id, reference):
+    channel = api.call("getChat", chat_id=reference)
+    if channel.get("type") != "channel":
+        raise ValueError("CHANNEL_ID doit désigner un canal Telegram.")
+    member = api.call("getChatMember", chat_id=channel["id"], user_id=bot_id)
+    if member.get("status") != "administrator" or not member.get("can_post_messages"):
+        raise ValueError("Ajoute le bot comme administrateur du canal avec le droit de publier.")
+    return channel["id"]
+
+
 class Bot:
-    def __init__(self, api, catalogue, admins, allowed_users):
+    def __init__(self, api, catalogue, admins, allowed_users, channel_id=None):
         self.api, self.catalogue = api, catalogue
         self.admins, self.allowed_users = set(admins), set(allowed_users)
+        self.channel_id = channel_id
 
     def send(self, chat_id, text, **params):
         return self.api.call("sendMessage", chat_id=chat_id, text=text, **params)
 
     def handle(self, update):
+        post = update.get("channel_post") or update.get("edited_channel_post")
+        if post:
+            if post.get("chat", {}).get("type") == "channel" and post["chat"]["id"] == self.channel_id:
+                media, kind = video_media(post)
+                if media:
+                    title = post.get("caption", "").strip() or media.get("file_name") or f"Film {post['message_id']}"
+                    film_id = self.catalogue.add(media, kind, title)
+                    self.catalogue.link_channel(self.channel_id, film_id, post["message_id"])
+            return
         callback = update.get("callback_query")
         message = update.get("message") or (callback or {}).get("message", {})
         if message.get("chat", {}).get("type") != "private":
@@ -59,11 +89,7 @@ class Bot:
             elif data.startswith("page:") and data[5:].isdigit():
                 self.list_films(chat_id, page=min(int(data[5:]), 100000))
             return
-        media = message.get("video")
-        kind = "video"
-        document = message.get("document", {})
-        if not media and document.get("mime_type", "").startswith("video/"):
-            media, kind = document, "document"
+        media, kind = video_media(message)
         if media:
             if user_id not in self.admins:
                 self.send(chat_id, "Seuls les administrateurs peuvent ajouter des films.")
@@ -73,9 +99,15 @@ class Bot:
                 self.send(chat_id, "Renvoie le film avec son titre en légende.")
                 return
             film_id = self.catalogue.add(media, kind, title)
+            origin = message.get("forward_origin", {})
+            if (self.channel_id and origin.get("type") == "channel" and
+                    origin.get("chat", {}).get("id") == self.channel_id and
+                    isinstance(origin.get("message_id"), int)):
+                self.catalogue.link_channel(self.channel_id, film_id, origin["message_id"])
             self.send(chat_id, f"Film enregistré : {title[:200]}\nNuméro : {film_id}")
         elif command in ("/start", "/aide", "/help"):
-            self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""))
+            self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
+                      reply_markup={"inline_keyboard": [[{"text": "🎬 Ouvrir le canal", "url": "https://t.me/maxxie_films"}]]})
         elif command == "/catalogue":
             self.list_films(chat_id)
         elif command == "/recherche":
@@ -85,12 +117,40 @@ class Bot:
                 self.send(chat_id, "Utilise /recherche titre")
         elif command == "/film":
             self.deliver(chat_id, argument.strip())
+        elif command == "/publier" and user_id in self.admins:
+            self.publish(chat_id, argument.strip())
         elif command == "/supprimer" and user_id in self.admins:
             if argument.strip().isdigit() and len(argument.strip()) < 16:
                 removed = self.catalogue.remove(int(argument.strip()))
                 self.send(chat_id, "Film retiré." if removed else "Film introuvable.")
             else:
                 self.send(chat_id, "Utilise /supprimer numéro")
+
+    def publish(self, chat_id, identifier):
+        if not self.channel_id:
+            self.send(chat_id, "Le canal n’est pas configuré.")
+            return
+        if not identifier.isdigit() or len(identifier) > 15:
+            self.send(chat_id, "Utilise /publier numéro")
+            return
+        film_id = int(identifier)
+        film = self.catalogue.get(film_id)
+        if not film:
+            self.send(chat_id, "Film introuvable.")
+            return
+        member = self.api.call("getChatMember", chat_id=self.channel_id, user_id=chat_id)
+        if member.get("status") != "creator" and not (
+                member.get("status") == "administrator" and member.get("can_post_messages")):
+            self.send(chat_id, "Tu dois aussi avoir le droit de publier dans le canal.")
+            return
+        if self.catalogue.channel_message(self.channel_id, film_id):
+            self.send(chat_id, "Ce film est déjà indexé dans le canal.")
+            return
+        file_id, kind, title = film
+        sent = self.api.call("sendVideo" if kind == "video" else "sendDocument",
+                             chat_id=self.channel_id, caption=title, **{kind: file_id})
+        self.catalogue.link_channel(self.channel_id, film_id, sent["message_id"])
+        self.send(chat_id, "Film publié dans le canal.")
 
     def list_films(self, chat_id, query="", page=0):
         rows = self.catalogue.search(query, page)
@@ -157,10 +217,14 @@ def main():
                     raise SystemExit("Le jeton ne correspond pas au BOT_USERNAME attendu.")
                 if api.call("getWebhookInfo").get("url"):
                     raise SystemExit("Un webhook existe : retire-le avant de démarrer ce service.")
+                try:
+                    bot.channel_id = verify_channel(api, identity["id"], os.environ.get("CHANNEL_ID", "@maxxie_films"))
+                except ValueError as error:
+                    raise SystemExit(str(error)) from None
                 ready = True
                 LOG.info("Bot vérifié ; réception des messages.")
             updates = api.call("getUpdates", offset=store.offset(), timeout=30,
-                               allowed_updates=["message", "callback_query"])
+                               allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"])
             for update in updates:
                 if stop.is_set():
                     break

@@ -14,10 +14,39 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 - `/film numéro` : recevoir un film.
 - Administrateurs : envoyer une vidéo avec un titre en légende ; renvoyer le même fichier met à jour son entrée sans doublon.
 - `/supprimer numéro` : retirer une entrée (administrateurs uniquement).
+- `/publier numéro` : publier un film dans `@maxxie_films` (administrateur du bot
+  disposant aussi du droit de publier dans le canal). Un film déjà indexé dans le
+  canal n’est pas republié.
 
-Seuls `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` accèdent aux films. Les groupes et les
-canaux sont ignorés. Cette version ne publie pas vers un canal et n’indexe pas
-les anciens messages automatiquement.
+Seuls `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` accèdent au catalogue privé du bot.
+Le canal public reste accessible selon ses propres règles Telegram.
+
+## Canal Maxxie Films
+
+Le bot gère [@maxxie_films](https://t.me/maxxie_films). Il doit être administrateur
+avec le droit **Publier des messages**. Au démarrage, il vérifie le type de
+destination et ses droits, puis résout `CHANNEL_ID` (par défaut `@maxxie_films`)
+en identifiant numérique.
+
+Les nouvelles vidéos et documents vidéo publiés directement dans ce canal sont
+indexés sans réponse dans le canal. Les modifications de légende mettent à jour
+le titre. Sans légende, le nom du fichier ou le numéro du message sert de titre.
+Les autres canaux et les groupes sont ignorés. Le menu privé propose un bouton
+pour ouvrir le canal.
+
+L’envoi d’un fichier au bot en privé l’ajoute seulement au catalogue ; utiliser
+ensuite `/publier numéro` pour le publier dans le canal. Pour indexer un ancien
+film sans le republier, un administrateur peut transférer son message du canal
+au bot en privé, avec son titre en légende. Si Telegram masque l’origine, ajouter
+la référence du fichier reste possible, mais le bot ne sait pas qu’il est déjà
+publié. L’API ne permet pas de parcourir automatiquement tout l’historique.
+
+`/supprimer` retire l’entrée du catalogue, sans supprimer le message du canal.
+Les suppressions de messages dans Telegram ne sont pas synchronisées. En cas de
+remplacement du fichier d’un message, le nouveau fichier est indexé ; retirer
+l’ancienne entrée avec `/supprimer` si elle n’est plus souhaitée. Les albums sont
+traités fichier par fichier. La prévention des doublons de publication ne garantit
+pas une livraison exactement une fois après une coupure pendant l’envoi.
 
 ## Hébergement sur le VPS existant
 
@@ -50,7 +79,7 @@ sudo journalctl -u maxxie-films-bot -n 30 --no-pager
 ```
 
 L’assistant demande le jeton en saisie masquée et les identifiants numériques des
-utilisateurs. Il vérifie l’identité de @maxxie_films_bot et refuse un webhook
+utilisateurs. Il vérifie l’identité de @maxxie_films_bot, ses droits dans le canal et refuse un webhook
 existant. Aucun jeton ne doit être ajouté au dépôt ou au chat. Le script conserve
 une configuration existante et ne démarre ni ne redémarre les services.
 

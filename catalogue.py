@@ -17,6 +17,9 @@ class Catalogue:
                 file_id TEXT NOT NULL, kind TEXT NOT NULL,
                 title TEXT NOT NULL, search_title TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS channel_films (
+                channel_id INTEGER NOT NULL, film_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL, PRIMARY KEY(channel_id, film_id));
         """)
 
     def add(self, media, kind, title):
@@ -44,7 +47,21 @@ class Catalogue:
 
     def remove(self, film_id):
         with self.db:
+            self.db.execute("DELETE FROM channel_films WHERE film_id=?", (film_id,))
             return self.db.execute("DELETE FROM films WHERE id=?", (film_id,)).rowcount
+
+    def channel_message(self, channel_id, film_id):
+        row = self.db.execute("SELECT message_id FROM channel_films WHERE channel_id=? AND film_id=?",
+                              (channel_id, film_id)).fetchone()
+        return row[0] if row else None
+
+    def link_channel(self, channel_id, film_id, message_id):
+        with self.db:
+            # Un remplacement de fichier dans un message retire l’ancienne association.
+            self.db.execute("DELETE FROM channel_films WHERE channel_id=? AND message_id=?",
+                            (channel_id, message_id))
+            self.db.execute("INSERT OR REPLACE INTO channel_films VALUES(?,?,?)",
+                            (channel_id, film_id, message_id))
 
     def offset(self):
         row = self.db.execute("SELECT value FROM state WHERE key='offset'").fetchone()

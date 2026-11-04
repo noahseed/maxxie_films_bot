@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from telegram_api import Telegram, TelegramError
-from bot import user_ids
+from bot import user_ids, verify_channel
 
 
 def main():
@@ -23,6 +23,7 @@ def main():
             raise SystemExit('Le jeton ne correspond pas à @maxxie_films_bot.')
         if api.call('getWebhookInfo').get('url'):
             raise SystemExit('Un webhook existe déjà ; configuration annulée.')
+        channel_id = verify_channel(api, identity['id'], '@maxxie_films')
         admins = user_ids(input('Identifiants numériques des administrateurs (virgules) : '))
         allowed = user_ids(input('Identifiants des autres utilisateurs autorisés (facultatif) : '))
         if not admins:
@@ -32,6 +33,7 @@ def main():
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, 'w') as stream:
         stream.write(f'BOT_TOKEN={token}\nBOT_USERNAME=maxxie_films_bot\n'
+                     f'CHANNEL_ID={channel_id}\n'
                      f"ADMIN_USER_IDS={','.join(map(str, sorted(admins)))}\n"
                      f"ALLOWED_USER_IDS={','.join(map(str, sorted(allowed)))}\n"
                      'DATABASE_PATH=/var/lib/maxxie-films-bot/catalogue.sqlite3\n')

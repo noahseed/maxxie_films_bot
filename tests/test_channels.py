@@ -1,0 +1,79 @@
+import unittest
+from unittest.mock import Mock
+
+from bot import Bot, verify_channel
+from catalogue import Catalogue
+
+
+class ChannelTests(unittest.TestCase):
+    def setUp(self):
+        self.api = Mock()
+        self.store = Catalogue(':memory:')
+        self.bot = Bot(self.api, self.store, {1}, {2}, -100123)
+        self.media = {'file_id': 'file', 'file_unique_id': 'unique'}
+
+    def tearDown(self):
+        self.store.db.close()
+
+    def post(self, **fields):
+        return {'chat': {'id': -100123, 'type': 'channel'},
+                'message_id': 50, 'video': self.media, 'caption': 'Un film', **fields}
+
+    def test_index_and_edit_without_posting_messages(self):
+        self.bot.handle({'channel_post': self.post()})
+        self.bot.handle({'edited_channel_post': self.post(caption='Nouveau titre')})
+        self.assertEqual(self.store.search(), [(1, 'Nouveau titre')])
+        self.assertEqual(self.store.channel_message(-100123, 1), 50)
+        self.api.call.assert_not_called()
+
+    def test_other_channel_is_ignored(self):
+        self.bot.handle({'channel_post': self.post(chat={'id': -100999, 'type': 'channel'})})
+        self.assertEqual(self.store.search(), [])
+
+    def test_admin_can_index_forwarded_history_without_republishing(self):
+        self.bot.handle({'message': {'from': {'id': 1}, 'chat': {'id': 1, 'type': 'private'},
+            'video': self.media, 'caption': 'Ancien film',
+            'forward_origin': {'type': 'channel', 'chat': {'id': -100123}, 'message_id': 20}}})
+        self.assertEqual(self.store.channel_message(-100123, 1), 20)
+        self.assertEqual(self.api.call.call_count, 1)
+        self.assertEqual(self.api.call.call_args.args[0], 'sendMessage')
+
+    def test_publish_checks_channel_rights_and_prevents_duplicate(self):
+        self.store.add(self.media, 'video', 'Un film')
+        self.api.call.side_effect = lambda method, **kw: (
+            {'status': 'creator'} if method == 'getChatMember' else {'message_id': 80})
+        self.bot.publish(1, '1')
+        self.bot.publish(1, '1')
+        sends = [c for c in self.api.call.call_args_list if c.args[0] == 'sendVideo']
+        self.assertEqual(len(sends), 1)
+        self.assertEqual(sends[0].kwargs['chat_id'], -100123)
+
+    def test_admin_without_channel_rights_cannot_publish(self):
+        self.store.add(self.media, 'video', 'Un film')
+        self.api.call.return_value = {'status': 'member'}
+        self.bot.publish(1, '1')
+        self.assertFalse(any(c.args[0] == 'sendVideo' for c in self.api.call.call_args_list))
+
+    def test_reader_cannot_publish(self):
+        self.store.add(self.media, 'video', 'Un film')
+        self.bot.handle({'message': {'from': {'id': 2}, 'chat': {'id': 2, 'type': 'private'},
+                                     'text': '/publier 1'}})
+        self.api.call.assert_not_called()
+
+    def test_verification_rejects_groups_and_missing_rights(self):
+        self.api.call.return_value = {'id': -100123, 'type': 'supergroup'}
+        with self.assertRaises(ValueError):
+            verify_channel(self.api, 123, '@maxxie_films')
+        self.api.call.side_effect = [{'id': -100123, 'type': 'channel'},
+                                     {'status': 'administrator', 'can_post_messages': False}]
+        with self.assertRaises(ValueError):
+            verify_channel(self.api, 123, '@maxxie_films')
+
+    def test_verification_returns_numeric_id(self):
+        self.api.call.side_effect = [{'id': -100123, 'type': 'channel'},
+                                     {'status': 'administrator', 'can_post_messages': True}]
+        self.assertEqual(verify_channel(self.api, 123, '@maxxie_films'), -100123)
+
+
+if __name__ == '__main__':
+    unittest.main()
