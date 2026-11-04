@@ -11,10 +11,10 @@ from telegram_api import Telegram, TelegramError
 LOG = logging.getLogger("maxxie-films")
 HELP = ("🎬 Maxxie Films\n\n"
         "Bienvenue dans notre coin cinéma ! 🍿\n"
-        "Choisis un film dans le catalogue ou recherche son titre.\n"
+        "Recherche un film par son titre.\n"
         "Rejoins le canal pour recevoir les films ici. Bonne séance !")
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo pour la publier dans le canal "
-              "avec son nom de fichier sans .mp4. Les boutons du catalogue "
+              "avec son nom de fichier sans .mp4. Les boutons des résultats de recherche "
               "permettent aussi de publier ou retirer une entrée.")
 MENU_BUTTON = {"text": "🏠 Menu", "callback_data": "menu"}
 
@@ -56,10 +56,11 @@ def clear_commands(api):
 
 
 class Bot:
-    def __init__(self, api, catalogue, admins, allowed_users, channel_id=None):
+    def __init__(self, api, catalogue, admins, allowed_users, channel_id=None, notify_chat_id=None):
         self.api, self.catalogue = api, catalogue
         self.admins, self.allowed_users = set(admins), set(allowed_users)
         self.channel_id = channel_id
+        self.notify_chat_id = notify_chat_id
 
     def send(self, chat_id, text, **params):
         return self.api.call("sendMessage", chat_id=chat_id, text=text, **params)
@@ -82,6 +83,7 @@ class Bot:
         chat_id = message["chat"]["id"]
         if not isinstance(user_id, int) or user_id != chat_id:
             return
+        self.notify_new_visitor((callback or message).get("from", {}))
         if callback:
             try:
                 self.api.call("answerCallbackQuery", callback_query_id=callback["id"])
@@ -100,7 +102,7 @@ class Bot:
         if callback:
             data = callback.get("data", "")
             if data == "catalogue":
-                self.list_films(chat_id)
+                self.show_menu(chat_id, user_id)
             elif data in ("aide", "menu"):
                 self.show_menu(chat_id, user_id)
             elif data == "recherche":
@@ -126,7 +128,7 @@ class Bot:
             elif data.startswith("film:"):
                 self.deliver(chat_id, data[5:])
             elif data.startswith("page:") and data[5:].isdigit():
-                self.list_films(chat_id, page=min(int(data[5:]), 100000))
+                self.show_menu(chat_id, user_id)
             return
         media, kind = video_media(message)
         if media:
@@ -157,7 +159,7 @@ class Bot:
         elif command in ("/start", "/aide", "/help"):
             self.show_menu(chat_id, user_id)
         elif command == "/catalogue":
-            self.list_films(chat_id)
+            self.show_menu(chat_id, user_id)
         elif command == "/recherche":
             if argument.strip():
                 self.list_films(chat_id, argument.strip()[:200])
@@ -172,24 +174,41 @@ class Bot:
                 removed = self.catalogue.remove(int(argument.strip()))
                 self.send(chat_id, "Film retiré." if removed else "Film introuvable.")
             else:
-                self.send(chat_id, "Choisis un film dans le catalogue pour le retirer.")
+                self.send(chat_id, "Recherche un film pour le retirer.")
         elif text and not text.startswith("/"):
             self.list_films(chat_id, text[:200])
 
     def show_menu(self, chat_id, user_id):
         self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
                   reply_markup={"inline_keyboard": [
-                      [{"text": "🎬 Catalogue", "callback_data": "catalogue"},
+                      [{"text": "🔎 Rechercher un film", "callback_data": "recherche"},
                        {"text": "❓ Aide", "callback_data": "aide"}],
-                      [{"text": "🔎 Rechercher un film", "callback_data": "recherche"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}]]})
+
+    def notify_new_visitor(self, user):
+        user_id = user["id"]
+        if not self.catalogue.remember_visitor(user_id):
+            return
+        if not self.notify_chat_id or user_id == self.notify_chat_id:
+            return
+        name = " ".join(str(user.get(key, "")) for key in ("first_name", "last_name")).strip()
+        username = user.get("username")
+        text = (f"👋 Nouvel utilisateur de Maxxie Films\n\n"
+                f"Nom : {name[:200] or 'Non renseigné'}\n"
+                f"Pseudo : {'@' + username if username else 'Non renseigné'}\n"
+                f"Identifiant : {user_id}")
+        try:
+            self.send(self.notify_chat_id, text)
+        except TelegramError as error:
+            # Ne pas interrompre l’utilisateur ou répéter un envoi incertain.
+            LOG.warning("Notification de nouveau visiteur non confirmée (code %s).", error.code)
 
     def publish(self, chat_id, identifier):
         if not self.channel_id:
             self.send(chat_id, "Le canal n’est pas configuré.")
             return
         if not identifier.isdigit() or len(identifier) > 15:
-            self.send(chat_id, "Choisis un film dans le catalogue pour le publier.")
+            self.send(chat_id, "Recherche un film pour le publier.")
             return
         film_id = int(identifier)
         film = self.catalogue.get(film_id)
@@ -221,6 +240,10 @@ class Bot:
                       {"text": "🎬 Voir le film dans le canal", "url": url}]]})
 
     def list_films(self, chat_id, query="", page=0):
+        if not query.strip():
+            self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.",
+                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+            return
         rows = self.catalogue.search(query, page)
         if not rows:
             self.send(chat_id, "Aucun film trouvé.", reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
@@ -249,7 +272,7 @@ class Bot:
 
     def deliver(self, chat_id, identifier):
         if not identifier.isdigit() or len(identifier) > 15:
-            self.send(chat_id, "Choisis un film dans le catalogue.")
+            self.send(chat_id, "Recherche un film puis sélectionne son titre.")
             return
         film = self.catalogue.get(int(identifier))
         if not film:
@@ -300,7 +323,12 @@ def main():
     path = Path(os.environ.get("DATABASE_PATH", "/var/lib/maxxie-films-bot/catalogue.sqlite3"))
     path.parent.mkdir(parents=True, exist_ok=True)
     store = Catalogue(path)
-    bot = Bot(api, store, admins, allowed)
+    notify_id = os.environ.get("NOTIFY_CHAT_ID", "").strip()
+    if not notify_id and len(admins) == 1:
+        notify_id = str(next(iter(admins)))
+    if not notify_id or not notify_id.isdigit() or int(notify_id) not in admins:
+        raise SystemExit("NOTIFY_CHAT_ID doit désigner un administrateur en privé.")
+    bot = Bot(api, store, admins, allowed, notify_chat_id=int(notify_id))
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())

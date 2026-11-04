@@ -28,6 +28,9 @@ def main():
         allowed = user_ids(input('Identifiants des autres utilisateurs autorisés (facultatif) : '))
         if not admins:
             raise ValueError('Au moins un administrateur est nécessaire')
+        notify_id = next(iter(admins)) if len(admins) == 1 else int(input('Identifiant administrateur destinataire des notifications privées : '))
+        if notify_id not in admins:
+            raise ValueError('Le destinataire doit être un administrateur.')
     except (TelegramError, ValueError) as error:
         raise SystemExit(str(error)) from None
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -35,6 +38,7 @@ def main():
         stream.write(f'BOT_TOKEN={token}\nBOT_USERNAME=maxxie_films_bot\n'
                      f'CHANNEL_ID={channel_id}\n'
                      f"ADMIN_USER_IDS={','.join(map(str, sorted(admins)))}\n"
+                     f'NOTIFY_CHAT_ID={notify_id}\n'
                      f"ALLOWED_USER_IDS={','.join(map(str, sorted(allowed)))}\n"
                      'DATABASE_PATH=/var/lib/maxxie-films-bot/catalogue.sqlite3\n')
     print('Configuration enregistrée. Démarrage : sudo systemctl enable --now maxxie-films-bot')

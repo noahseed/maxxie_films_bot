@@ -17,6 +17,7 @@ class Catalogue:
                 file_id TEXT NOT NULL, kind TEXT NOT NULL,
                 title TEXT NOT NULL, search_title TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS visitors (user_id INTEGER PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS channel_films (
                 channel_id INTEGER NOT NULL, film_id INTEGER NOT NULL,
                 message_id INTEGER NOT NULL, PRIMARY KEY(channel_id, film_id));
@@ -72,6 +73,10 @@ class Catalogue:
     def offset(self):
         row = self.db.execute("SELECT value FROM state WHERE key='offset'").fetchone()
         return row[0] if row else 0
+
+    def remember_visitor(self, user_id):
+        with self.db:
+            return self.db.execute("INSERT OR IGNORE INTO visitors VALUES(?)", (user_id,)).rowcount == 1
 
     def acknowledge(self, update_id):
         with self.db:

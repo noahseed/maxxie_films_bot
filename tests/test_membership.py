@@ -69,8 +69,7 @@ class MembershipTests(unittest.TestCase):
         response = self.api.call.call_args.kwargs
         self.assertNotIn('/', response['text'])
         rows = response['reply_markup']['inline_keyboard']
-        self.assertEqual([b['callback_data'] for b in rows[0]], ['catalogue', 'aide'])
-        self.assertEqual(rows[1][0]['callback_data'], 'recherche')
+        self.assertEqual([b['callback_data'] for b in rows[0]], ['recherche', 'aide'])
         self.callback('recherche')
         self.bot.handle({'message': {'chat': {'id': 2, 'type': 'private'},
             'from': {'id': 2}, 'text': 'Un film'}})
@@ -81,7 +80,7 @@ class MembershipTests(unittest.TestCase):
             self.callback(action)
         self.assertIsNotNone(self.store.get(1))
         self.assertEqual(self.sent_films(), [])
-        self.callback('catalogue')
+        self.bot.list_films(2, 'Un film')
         self.assertNotIn('retirer:', str(self.api.call.call_args.kwargs))
 
     def test_admin_removal_requires_confirmation(self):

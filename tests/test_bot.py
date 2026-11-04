@@ -67,13 +67,13 @@ class BotTests(unittest.TestCase):
         self.bot.handle(message(2, text='/film 1'))
         self.api.call.assert_called_with('sendDocument', chat_id=2, document='file', caption='Film MKV')
 
-    def test_pagination(self):
+    def test_legacy_catalogue_command_opens_menu_without_browsing(self):
         for number in range(12):
             self.store.add({'file_id': str(number), 'file_unique_id': str(number)}, 'video', str(number))
         self.bot.handle(message(2, text='/catalogue'))
         keyboard = self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']
-        self.assertEqual(len(keyboard), 12)
-        self.assertEqual(keyboard[-2][0]['callback_data'], 'page:1')
+        self.assertNotIn('catalogue', str(keyboard))
+        self.assertNotIn('film:', str(keyboard))
 
 
 if __name__ == '__main__':

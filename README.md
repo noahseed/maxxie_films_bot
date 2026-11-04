@@ -11,13 +11,14 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 
 ## Utilisation
 
-Le menu propose des boutons **Catalogue** et **Aide** côte à côte, puis
-**Rechercher un film** et **Rejoindre le canal**. Cliquer sur un titre permet de
+Le menu propose **Rechercher un film** et **Aide** côte à côte, puis
+**Rejoindre le canal**. L’option Catalogue a été retirée ; les anciens boutons de
+catalogue et de pagination reviennent au menu. Cliquer sur un titre permet de
 recevoir le film. La recherche demande simplement de saisir un titre, sans commande.
 Les résultats et les messages d’abonnement permettent de revenir au menu.
 
 Les administrateurs voient aussi les boutons **Publier** et **Retirer** sous
-chaque film. Le retrait demande confirmation et conserve le message du canal.
+chaque résultat de recherche. Le retrait demande confirmation et conserve le message du canal.
 L’envoi d’une vidéo par un administrateur conserve la publication automatique.
 Un fichier déjà connu affiche un bouton vers sa publication d’origine.
 
@@ -26,6 +27,27 @@ historiques restent compatibles, notamment `/start` pour ouvrir le menu initial
 et `/id` pour obtenir son identifiant. Au démarrage, les listes de commandes
 Telegram par défaut et pour les conversations privées sont supprimées pour la
 langue par défaut et le français.
+
+## Notifications de nouveaux utilisateurs
+
+À la première interaction privée d’un utilisateur, le bot envoie un message privé
+à `NOTIFY_CHAT_ID`, avec le nom affiché, le pseudo si disponible et l’identifiant
+Telegram. Les tentatives d’accès d’utilisateurs non autorisés sont aussi signalées.
+Les messages du canal ne déclenchent pas de notification. Le destinataire ne reçoit
+pas de notification pour ses propres interactions.
+
+Les identifiants déjà vus sont conservés dans la table SQLite `visitors`, sans
+stocker les noms ni les pseudos. Les visites suivantes et les redémarrages ne
+produisent pas de nouvelle alerte. Le suivi commence à l’installation de cette
+fonction : une ancienne personne peut donc être signalée lors de son prochain
+passage si elle n’avait jamais été enregistrée.
+
+`NOTIFY_CHAT_ID` doit être l’identifiant positif d’un administrateur. Avec un seul
+administrateur, son identifiant est utilisé par défaut. Avec plusieurs, préciser
+le destinataire. Ce compte doit avoir démarré le bot et ne pas l’avoir bloqué.
+Une erreur de notification est journalisée sans empêcher l’utilisateur de
+continuer. Les notifications ne sont pas rejouées automatiquement, car un échec
+réseau peut survenir après un envoi accepté par Telegram.
 
 ## Abonnement obligatoire avant téléchargement
 
