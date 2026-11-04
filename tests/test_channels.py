@@ -8,6 +8,7 @@ from catalogue import Catalogue
 class ChannelTests(unittest.TestCase):
     def setUp(self):
         self.api = Mock()
+        self.api.call.return_value = {'status': 'creator', 'message_id': 80}
         self.store = Catalogue(':memory:')
         self.bot = Bot(self.api, self.store, {1}, {2}, -100123)
         self.media = {'file_id': 'file', 'file_unique_id': 'unique'}
@@ -67,7 +68,7 @@ class ChannelTests(unittest.TestCase):
             'video': self.media, 'caption': 'Ancien film',
             'forward_origin': {'type': 'channel', 'chat': {'id': -100123}, 'message_id': 20}}})
         self.assertEqual(self.store.channel_message(-100123, 1), 20)
-        self.assertEqual(self.api.call.call_count, 1)
+        self.assertEqual(len([c for c in self.api.call.call_args_list if c.args[0] == "sendMessage"]), 1)
         self.assertEqual(self.api.call.call_args.args[0], 'sendMessage')
 
     def test_publish_checks_channel_rights_and_prevents_duplicate(self):
@@ -90,7 +91,7 @@ class ChannelTests(unittest.TestCase):
         self.bot.handle({'message': {'from': {'id': 1}, 'chat': {'id': 1, 'type': 'private'},
             'video': {**self.media, 'file_name': 'Nouveau nom.mp4'}}})
         self.assertEqual(self.store.get(film_id)[2], 'Titre original')
-        self.assertEqual(self.api.call.call_count, 1)
+        self.assertEqual(len([c for c in self.api.call.call_args_list if c.args[0] == "sendMessage"]), 1)
         notice = self.api.call.call_args
         self.assertEqual(notice.args[0], 'sendMessage')
         self.assertIn('Titre original', notice.kwargs['text'])
@@ -120,7 +121,7 @@ class ChannelTests(unittest.TestCase):
         self.store.add(self.media, 'video', 'Un film')
         self.bot.handle({'message': {'from': {'id': 2}, 'chat': {'id': 2, 'type': 'private'},
                                      'text': '/publier 1'}})
-        self.api.call.assert_not_called()
+        self.assertFalse(any(c.args[0] == "sendVideo" for c in self.api.call.call_args_list))
 
     def test_verification_rejects_groups_and_missing_rights(self):
         self.api.call.return_value = {'id': -100123, 'type': 'supergroup'}

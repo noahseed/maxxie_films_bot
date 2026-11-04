@@ -21,9 +21,10 @@ class BotTests(unittest.TestCase):
         self.store.db.close()
 
     def test_admin_adds_and_reader_receives(self):
-        self.store.add(self.media, 'video', 'Un film')
+        film_id = self.store.add(self.media, 'video', 'Un film')
+        self.store.link_channel(-100123, film_id, 50)
         self.bot.handle(message(2, text='/film 1'))
-        self.api.call.assert_called_with('sendVideo', chat_id=2, video='file', caption='Un film')
+        self.assertEqual(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
 
     def test_reader_cannot_add_or_remove(self):
         self.bot.handle(message(2, video=self.media, caption='Un film'))
@@ -58,14 +59,13 @@ class BotTests(unittest.TestCase):
         self.api.call.assert_not_called()
 
     def test_document_and_missing_caption(self):
-        self.bot.channel_id = None
         media = {**self.media, 'mime_type': 'video/x-matroska'}
         self.bot.handle(message(document=media))
         self.assertEqual(self.store.search(), [])
         self.bot.handle(message(document=media, caption='Film MKV'))
-        self.bot.channel_id = -100123
+        self.store.link_channel(-100123, 1, 50)
         self.bot.handle(message(2, text='/film 1'))
-        self.api.call.assert_called_with('sendDocument', chat_id=2, document='file', caption='Film MKV')
+        self.assertEqual(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
 
     def test_legacy_catalogue_command_opens_menu_without_browsing(self):
         for number in range(12):

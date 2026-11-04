@@ -16,6 +16,7 @@ def message(user_id=3, text='/start', **profile):
 class VisitorTests(unittest.TestCase):
     def setUp(self):
         self.api = Mock()
+        self.api.call.return_value = {'status': 'member'}
         self.store = Catalogue(':memory:')
         self.bot = Bot(self.api, self.store, {1}, {2}, -100123, notify_chat_id=1)
 
@@ -59,6 +60,7 @@ class VisitorTests(unittest.TestCase):
         def call(method, **params):
             if method == 'sendMessage' and params['chat_id'] == 1:
                 raise TelegramError(403)
+            return {'status': 'member'}
         self.api.call.side_effect = call
         with self.assertLogs('maxxie-films', level='WARNING'):
             self.bot.handle(message())

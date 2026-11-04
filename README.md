@@ -6,19 +6,20 @@ automatiquement dans le canal, avec leur nom de fichier sans le suffixe `.mp4`
 (également reconnu en majuscules). Exemple : `Mon Film.mp4` → `Mon Film`.
 Le nom de fichier prime sur une légende existante. Si Telegram ne fournit pas le nom,
 la légende sert de titre ; sans les deux, le bot demande de renvoyer le fichier.
-Les utilisateurs autorisés recherchent les films et les reçoivent en privé.
+Les utilisateurs autorisés recherchent les films et ouvrent leur publication dans le canal.
 Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQLite.
 
 ## Utilisation
 
 Le menu propose **Rechercher un film** et **Aide** côte à côte, puis
 **Rejoindre le canal**. L’option Catalogue a été retirée ; les anciens boutons de
-catalogue et de pagination reviennent au menu. Cliquer sur un titre permet de
-recevoir le film. La recherche demande simplement de saisir un titre, sans commande.
-Les résultats et les messages d’abonnement permettent de revenir au menu.
+catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
+son message dans le canal. Seuls les films indexés dans ce canal sont proposés. La recherche demande simplement de saisir un titre, sans commande.
+Les résultats permettent de revenir au menu.
 
-Les administrateurs voient aussi les boutons **Publier** et **Retirer** sous
-chaque résultat de recherche. Le retrait demande confirmation et conserve le message du canal.
+Les options **Publier** et **Retirer** sont supprimées pour tous, y compris les
+administrateurs. Les anciens boutons et commandes correspondants reviennent au
+menu sans publier ni retirer d’entrée.
 L’envoi d’une vidéo par un administrateur conserve la publication automatique.
 Un fichier déjà connu affiche un bouton vers sa publication d’origine.
 
@@ -49,18 +50,22 @@ Une erreur de notification est journalisée sans empêcher l’utilisateur de
 continuer. Les notifications ne sont pas rejouées automatiquement, car un échec
 réseau peut survenir après un envoi accepté par Telegram.
 
-## Abonnement obligatoire avant téléchargement
+## Abonnement obligatoire pour utiliser le bot
 
-Avant **chaque envoi** de vidéo ou document en privé, le bot interroge Telegram
-pour vérifier que l’utilisateur est membre, administrateur ou propriétaire du
-canal. Le statut restreint est accepté uniquement si `is_member` est vrai.
-Une erreur de vérification bloque l’envoi et propose de réessayer.
+Avant toute interaction privée (accueil, aide, recherche, anciens boutons,
+commandes et envoi de vidéos), le bot interroge Telegram pour vérifier l’abonnement
+au canal. Membres, administrateurs et propriétaire sont acceptés ; le statut
+restreint exige `is_member=true`. Une erreur de vérification bloque l’accès et
+propose de réessayer. Aucun rôle administrateur n’exempte de cette vérification.
 
-Sans abonnement, le bot affiche **Rejoindre le canal**, puis **J’ai rejoint le
-canal**. Ce dernier bouton vérifie à nouveau l’abonnement et envoie le film
-initialement choisi s’il est confirmé. Quitter le canal bloque les téléchargements
-suivants. Les anciens boutons et les commandes historiques passent par la même
-vérification. Les administrateurs du bot n’en sont pas exemptés.
+Sans abonnement, seuls **Rejoindre le canal** et **J’ai rejoint le canal** sont
+proposés. Ce dernier bouton vérifie à nouveau l’abonnement avant d’afficher le
+menu. Quitter le canal bloque les interactions suivantes.
+
+Les résultats de recherche sont des liens vers les messages du canal. Aucun film
+n’est envoyé en privé aux utilisateurs. Les anciens boutons de téléchargement
+renvoient aussi vers la publication, après vérification d’abonnement.
+Les notifications de première visite sont enregistrées avant le contrôle d’accès.
 
 Les listes `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` continuent de limiter l’accès au
 catalogue privé : l’abonnement est une condition supplémentaire. Le bot doit rester
@@ -71,8 +76,8 @@ si le fichier est renommé ou envoyé comme document vidéo. Elle s’applique a
 messages connus du bot dans le canal configuré. Deux fichiers différents portant
 le même titre ne sont pas bloqués : il peut s’agir de versions distinctes. Un
 fichier réencodé peut donc ne pas être reconnu. Si le message a été supprimé de
-Telegram, le lien peut être périmé ; retirer l’entrée avec le bouton **Retirer** pour
-permettre une nouvelle publication.
+Telegram, le lien peut être périmé. Les suppressions ne sont pas synchronisées
+automatiquement et nécessitent une maintenance du catalogue sur le serveur.
 
 Seuls `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` accèdent au catalogue privé du bot.
 Le canal public reste accessible selon ses propres règles Telegram.
@@ -92,18 +97,17 @@ pour ouvrir le canal.
 
 L’envoi d’un fichier au bot en privé l’ajoute au catalogue et le publie dans le canal
 si l’expéditeur est administrateur du bot et dispose du droit de publication dans
-le canal. Le bouton **Publier** permet aussi de publier une entrée existante. Pour indexer un ancien
+le canal. Pour indexer un ancien
 film sans le republier, un administrateur peut transférer son message du canal
 au bot en privé, avec son titre en légende. Si Telegram masque l’origine, ajouter
 la référence du fichier reste possible, mais le bot ne sait pas qu’il est déjà
 publié. L’API ne permet pas de parcourir automatiquement tout l’historique.
 
-Le bouton **Retirer** retire l’entrée du catalogue, sans supprimer le message du canal.
 Les suppressions de messages dans Telegram ne sont pas synchronisées. En cas de
-remplacement du fichier d’un message, le nouveau fichier est indexé ; retirer
-l’ancienne entrée avec **Retirer** si elle n’est plus souhaitée. Les albums sont
-traités fichier par fichier. La prévention des doublons de publication ne garantit
-pas une livraison exactement une fois après une coupure pendant l’envoi.
+remplacement du fichier d’un message, le nouveau fichier est indexé et l’ancienne
+référence au message est retirée. Les albums sont traités fichier par fichier.
+La prévention des doublons de publication ne garantit pas une livraison exactement
+une fois après une coupure pendant l’envoi.
 
 ## Hébergement sur le VPS existant
 

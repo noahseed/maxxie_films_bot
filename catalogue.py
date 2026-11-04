@@ -46,6 +46,13 @@ class Catalogue:
         return self.db.execute("SELECT file_id,kind,title FROM films WHERE id=?",
                                (film_id,)).fetchone()
 
+    def search_channel(self, channel_id, query):
+        query = normalize(query).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return self.db.execute("""SELECT films.id,films.title,channel_films.message_id
+            FROM films JOIN channel_films ON channel_films.film_id=films.id
+            WHERE channel_films.channel_id=? AND films.search_title LIKE ? ESCAPE '\\'
+            ORDER BY films.id DESC LIMIT 11""", (channel_id, f"%{query}%")).fetchall()
+
     def remove(self, film_id):
         with self.db:
             self.db.execute("DELETE FROM channel_films WHERE film_id=?", (film_id,))
