@@ -1,0 +1,28 @@
+[Unit]
+Description=Bot Telegram Maxxie Films
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=maxxie-films-bot
+Group=maxxie-films-bot
+WorkingDirectory=/opt/maxxie-films-bot
+EnvironmentFile=/etc/maxxie-films-bot.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/maxxie-films-bot/bot.py
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=90
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+StateDirectory=maxxie-films-bot
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target
