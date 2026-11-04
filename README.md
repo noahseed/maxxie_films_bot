@@ -1,8 +1,12 @@
 # Maxxie Films Bot
 
 Catalogue privé pour **@maxxie_films_bot**, en Python 3.11+, sans dépendances externes.
-Les administrateurs envoient au bot des vidéos ou documents vidéo avec leur titre
-en légende. Les utilisateurs autorisés recherchent les films et les reçoivent en privé.
+Les administrateurs envoient au bot des vidéos ou documents vidéo ; le bot les publie
+automatiquement dans le canal, avec leur nom de fichier sans le suffixe `.mp4`
+(également reconnu en majuscules). Exemple : `Mon Film.mp4` → `Mon Film`.
+Le nom de fichier prime sur une légende existante. Si Telegram ne fournit pas le nom,
+la légende sert de titre ; sans les deux, le bot demande de renvoyer le fichier.
+Les utilisateurs autorisés recherchent les films et les reçoivent en privé.
 Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQLite.
 
 ## Utilisation
@@ -12,7 +16,7 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 - `/catalogue` : parcourir les films, dix par page.
 - `/recherche titre` : recherche insensible aux accents et à la casse.
 - `/film numéro` : recevoir un film.
-- Administrateurs : envoyer une vidéo avec un titre en légende ; renvoyer le même fichier met à jour son entrée sans doublon.
+- Administrateurs : envoyer une vidéo pour la publier automatiquement ; renvoyer le même fichier met à jour son entrée sans le republier s’il est déjà indexé dans le canal.
 - `/supprimer numéro` : retirer une entrée (administrateurs uniquement).
 - `/publier numéro` : publier un film dans `@maxxie_films` (administrateur du bot
   disposant aussi du droit de publier dans le canal). Un film déjà indexé dans le
@@ -34,8 +38,9 @@ le titre. Sans légende, le nom du fichier ou le numéro du message sert de titr
 Les autres canaux et les groupes sont ignorés. Le menu privé propose un bouton
 pour ouvrir le canal.
 
-L’envoi d’un fichier au bot en privé l’ajoute seulement au catalogue ; utiliser
-ensuite `/publier numéro` pour le publier dans le canal. Pour indexer un ancien
+L’envoi d’un fichier au bot en privé l’ajoute au catalogue et le publie dans le canal
+si l’expéditeur est administrateur du bot et dispose du droit de publication dans
+le canal. `/publier numéro` permet aussi de publier une entrée existante. Pour indexer un ancien
 film sans le republier, un administrateur peut transférer son message du canal
 au bot en privé, avec son titre en légende. Si Telegram masque l’origine, ajouter
 la référence du fichier reste possible, mais le bot ne sait pas qu’il est déjà

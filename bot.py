@@ -16,7 +16,7 @@ HELP = ("🎬 Maxxie Films\n\n"
         "/id — ton identifiant Telegram\n"
         "/aide — afficher ce menu")
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo ou un fichier vidéo "
-              "avec son titre en légende pour l’ajouter.\n"
+              "pour le publier dans le canal avec son nom de fichier sans .mp4.\n"
               "/publier numéro — publier un film dans le canal\n"
               "/supprimer numéro — retirer un film du catalogue")
 
@@ -28,6 +28,17 @@ def video_media(message):
     if document.get("mime_type", "").startswith("video/"):
         return document, "document"
     return None, None
+
+
+def film_title(message, media):
+    title = (media.get("file_name") or "").strip()
+    if title:
+        title = title.replace("\\", "/").rsplit("/", 1)[-1]
+    else:
+        title = message.get("caption", "").strip()
+    if title.lower().endswith(".mp4"):
+        title = title[:-4].strip()
+    return title[:200]
 
 
 def verify_channel(api, bot_id, reference):
@@ -94,9 +105,10 @@ class Bot:
             if user_id not in self.admins:
                 self.send(chat_id, "Seuls les administrateurs peuvent ajouter des films.")
                 return
-            title = message.get("caption", "").strip()
+            title = film_title(message, media)
             if not title:
-                self.send(chat_id, "Renvoie le film avec son titre en légende.")
+                self.send(chat_id, "Telegram n’a pas fourni le nom du fichier. "
+                          "Renvoie la vidéo en tant que fichier, ou indique son titre en légende.")
                 return
             film_id = self.catalogue.add(media, kind, title)
             origin = message.get("forward_origin", {})
@@ -104,7 +116,11 @@ class Bot:
                     origin.get("chat", {}).get("id") == self.channel_id and
                     isinstance(origin.get("message_id"), int)):
                 self.catalogue.link_channel(self.channel_id, film_id, origin["message_id"])
-            self.send(chat_id, f"Film enregistré : {title[:200]}\nNuméro : {film_id}")
+                self.send(chat_id, f"Film indexé : {title}\nNuméro : {film_id}")
+            elif self.channel_id:
+                self.publish(chat_id, str(film_id))
+            else:
+                self.send(chat_id, f"Film enregistré : {title}\nNuméro : {film_id}")
         elif command in ("/start", "/aide", "/help"):
             self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
                       reply_markup={"inline_keyboard": [[{"text": "🎬 Ouvrir le canal", "url": "https://t.me/maxxie_films"}]]})
