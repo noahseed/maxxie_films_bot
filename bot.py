@@ -98,7 +98,11 @@ class Bot:
             return
         if callback:
             data = callback.get("data", "")
-            if data.startswith("film:"):
+            if data == "catalogue":
+                self.list_films(chat_id)
+            elif data == "aide":
+                self.show_menu(chat_id, user_id)
+            elif data.startswith("film:"):
                 self.deliver(chat_id, data[5:])
             elif data.startswith("page:") and data[5:].isdigit():
                 self.list_films(chat_id, page=min(int(data[5:]), 100000))
@@ -125,8 +129,7 @@ class Bot:
             else:
                 self.send(chat_id, f"Film enregistré : {title}\nNuméro : {film_id}")
         elif command in ("/start", "/aide", "/help"):
-            self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
-                      reply_markup={"inline_keyboard": [[{"text": "🎬 Ouvrir le canal", "url": "https://t.me/maxxie_films"}]]})
+            self.show_menu(chat_id, user_id)
         elif command == "/catalogue":
             self.list_films(chat_id)
         elif command == "/recherche":
@@ -144,6 +147,13 @@ class Bot:
                 self.send(chat_id, "Film retiré." if removed else "Film introuvable.")
             else:
                 self.send(chat_id, "Utilise /supprimer numéro")
+
+    def show_menu(self, chat_id, user_id):
+        self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
+                  reply_markup={"inline_keyboard": [
+                      [{"text": "🎬 Catalogue", "callback_data": "catalogue"},
+                       {"text": "❓ Aide", "callback_data": "aide"}],
+                      [{"text": "🎬 Ouvrir le canal", "url": "https://t.me/maxxie_films"}]]})
 
     def publish(self, chat_id, identifier):
         if not self.channel_id:
