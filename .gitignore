@@ -1,0 +1,30 @@
+# Secrets et configuration locale
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+
+# Outils locaux
+.agents/
+.codex/
+.idea/
+.vscode/
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node.js
+node_modules/
+
+# Données et journaux locaux
+*.log
+*.sqlite
+*.sqlite3
