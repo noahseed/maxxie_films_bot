@@ -179,8 +179,8 @@ class Bot:
                   reply_markup={"inline_keyboard": [
                       [{"text": "🔎 Rechercher un film", "callback_data": "recherche"},
                        {"text": "❓ Aide", "callback_data": "aide"}],
-                      [{"text": "✉️ Contact", "callback_data": "contact"}],
-                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}]]})
+                      [{"text": "✉️ Contact", "callback_data": "contact"},
+                       {"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}]]})
 
     def send_contact(self, chat_id, message):
         # Garder le mode contact pour les messages suivants, y compris un album.
