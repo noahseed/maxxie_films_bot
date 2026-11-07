@@ -13,7 +13,7 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 
 Le menu propose **Rechercher un film** et **Lire les règles** sur la première ligne,
 **Rejoindre le canal** seul sur la deuxième, puis **Contact** et **Menu**
-sur la troisième. Le règlement s’affiche en privé avec un retour au menu.
+sur la troisième, puis **Assistant IA** sur une quatrième ligne. Le règlement s’affiche en privé avec un retour au menu.
 L’option Catalogue a été retirée ; les anciens boutons de
 catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
 son message dans le canal. Seuls les films indexés dans ce canal sont proposés. La recherche demande simplement de saisir un titre, sans commande.
@@ -69,6 +69,52 @@ liées à l’administrateur et au destinataire ; un autre utilisateur ne peut p
 s’en servir. Les sessions et leurs références survivent aux redémarrages. Aucun
 contenu de conversation n’est enregistré sur le VPS. Un envoi non confirmé n’est
 pas retenté automatiquement.
+
+## Assistant IA OpenAI
+
+Le bouton **Assistant IA** ouvre une discussion consacrée au cinéma. Les messages
+saisis dans ce mode sont envoyés à OpenAI ; les conversations Contact, la recherche
+classique et les vidéos ne le sont pas. L’IA propose des titres, puis le bot ajoute
+uniquement des liens vérifiés vers les publications de son canal. Une suggestion
+ne garantit pas la présence du film. L’IA ne peut ni publier, ni retirer un film,
+ni exécuter des commandes. Le bouton **Menu** termine la discussion.
+
+La mémoire des deux derniers échanges reste uniquement en RAM et expire après
+15 minutes d’inactivité (nettoyage au passage suivant de la boucle). Les requêtes
+utilisent la Responses API avec `store=false`, sans identifiant ni pseudo Telegram.
+Les questions et réponses ne sont pas enregistrées dans SQLite. Les quotas le sont,
+sans contenu : **20 requêtes par utilisateur et 100 pour le bot par jour UTC**, avec
+600 tokens de sortie maximum et 2 000 caractères par question. Les tentatives en
+erreur consomment aussi une unité de quota. Ce sont des limites d’appels, pas une
+garantie de plafond de facturation OpenAI.
+
+Deux générations au maximum sont exécutées en arrière-plan, une par utilisateur.
+Le reste du bot reste utilisable pendant la génération. L’abonnement est vérifié
+avant la question et à nouveau avant l’envoi de la réponse.
+
+### Clé dédiée au bot films
+
+Aucune clé du bot musical n’est réutilisée. Créer une clé de projet dédiée dans
+[OpenAI Platform](https://platform.openai.com/api-keys), puis sur le VPS :
+
+```bash
+sudo python3 /opt/maxxie-films-bot/configure_openai.py
+sudo systemctl restart maxxie-films-bot
+```
+
+Le script demande la clé en saisie masquée et vérifie l’accès au modèle sans
+générer de réponse. Il crée `/etc/maxxie-films-openai.env`, réservé à root (600).
+Le modèle proposé est `gpt-4.1-mini`. Les limites sont réglables dans ce même
+fichier avec `OPENAI_DAILY_USER_LIMIT` et `OPENAI_DAILY_TOTAL_LIMIT`. La clé reste
+sur le serveur ; ne pas la coller dans Telegram, dans le chat ou dans Git.
+Sans cette configuration, le bot reste fonctionnel et l’assistant indique qu’il
+attend sa configuration. L’API peut refuser la génération si le projet ne dispose
+pas de crédit ou de droits suffisants.
+
+Le fichier dédié est inclus dans les sauvegardes dès qu’il existe. Les archives
+qui le contiennent sont donc également secrètes. Documentation de référence :
+[Responses et authentification](https://developers.openai.com/api/reference/overview),
+[sorties structurées](https://developers.openai.com/api/docs/guides/structured-outputs).
 
 ## Notifications de nouveaux utilisateurs
 
@@ -166,7 +212,7 @@ Depuis votre ordinateur, copier le code :
 
 ```bash
 ssh debian@maxxie432.rondeau-cameira.fr 'mkdir -p ~/maxxie-films-bot/deploy'
-scp bot.py catalogue.py search.py telegram_api.py backups.py debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/
+scp bot.py catalogue.py search.py telegram_api.py openai_api.py backups.py debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/
 scp deploy/* debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/deploy/
 ```
 

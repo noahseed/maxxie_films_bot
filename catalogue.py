@@ -21,6 +21,9 @@ class Catalogue:
                 title TEXT NOT NULL, search_title TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS visitors (user_id INTEGER PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS ai_usage (
+                day TEXT NOT NULL, user_id INTEGER NOT NULL, requests INTEGER NOT NULL,
+                PRIMARY KEY(day,user_id));
             CREATE TABLE IF NOT EXISTS contact_requests (
                 user_id INTEGER PRIMARY KEY, expires_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS contact_threads (
@@ -149,3 +152,16 @@ class Catalogue:
     def acknowledge(self, update_id):
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO state VALUES('offset',?)", (update_id + 1,))
+
+    def reserve_ai(self, user_id, per_user=20, total=100):
+        day = time.strftime('%Y-%m-%d', time.gmtime())
+        with self.db:
+            self.db.execute("DELETE FROM ai_usage WHERE day<>?", (day,))
+            used = self.db.execute("SELECT requests FROM ai_usage WHERE day=? AND user_id=?",
+                                   (day, user_id)).fetchone()
+            overall = self.db.execute("SELECT coalesce(sum(requests),0) FROM ai_usage WHERE day=?", (day,)).fetchone()[0]
+            if (used and used[0] >= per_user) or overall >= total:
+                return False
+            self.db.execute("INSERT INTO ai_usage VALUES(?,?,1) ON CONFLICT(day,user_id) DO UPDATE SET requests=requests+1",
+                            (day, user_id))
+            return True

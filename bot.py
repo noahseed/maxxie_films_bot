@@ -4,9 +4,12 @@ import os
 from pathlib import Path
 import signal
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 from catalogue import Catalogue
 from telegram_api import Telegram, TelegramError
+from openai_api import CinemaAI, OpenAIError
 
 LOG = logging.getLogger("maxxie-films")
 HELP = ("🎬 Maxxie Films\n\n"
@@ -60,11 +63,15 @@ def clear_commands(api):
 
 
 class Bot:
-    def __init__(self, api, catalogue, admins, allowed_users, channel_id=None, notify_chat_id=None):
+    def __init__(self, api, catalogue, admins, allowed_users, channel_id=None, notify_chat_id=None,
+                 ai=None, ai_per_user=20, ai_total=100):
         self.api, self.catalogue = api, catalogue
         self.admins, self.allowed_users = set(admins), set(allowed_users)
         self.channel_id = channel_id
         self.notify_chat_id = notify_chat_id
+        self.ai, self.ai_per_user, self.ai_total = ai, ai_per_user, ai_total
+        self.ai_sessions, self.ai_jobs = {}, {}
+        self.ai_executor = ThreadPoolExecutor(max_workers=2) if ai else None
 
     def send(self, chat_id, text, **params):
         return self.api.call("sendMessage", chat_id=chat_id, text=text, **params)
@@ -99,6 +106,7 @@ class Bot:
         if not self.check_membership(chat_id):
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
+            self.ai_sessions.pop(user_id, None)
             return
         if not callback and command == "/id":
             self.send(chat_id, f"Ton identifiant Telegram : {user_id}")
@@ -111,7 +119,19 @@ class Bot:
             data = callback.get("data", "")
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
-            if data.startswith("repondre:"):
+            self.ai_sessions.pop(user_id, None)
+            if data == "assistant":
+                if not self.ai:
+                    self.send(chat_id, "L’assistant IA attend sa configuration OpenAI.",
+                              reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                    return
+                self.ai_sessions = {uid: session for uid, session in self.ai_sessions.items()
+                                    if time.monotonic() - session['time'] < 900}
+                self.ai_sessions[user_id] = {'time': time.monotonic(), 'history': []}
+                self.send(chat_id, "🤖 Pose ta question sur le cinéma ou décris le film que tu cherches. "
+                          "Tes messages dans ce mode sont envoyés à OpenAI. Le bouton Menu termine la discussion.",
+                          reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+            elif data.startswith("repondre:"):
                 target = (self.catalogue.begin_reply(user_id, data.split(":", 1)[1])
                           if user_id == self.notify_chat_id and user_id in self.admins else None)
                 if not target:
@@ -152,6 +172,10 @@ class Bot:
         if text.startswith("/"):
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
+            self.ai_sessions.pop(user_id, None)
+        elif user_id in self.ai_sessions:
+            self.ask_ai(user_id, text)
+            return
         elif self.catalogue.reply_target(user_id):
             self.send_reply(user_id, message)
             return
@@ -205,7 +229,60 @@ class Bot:
                        {"text": "📜 Lire les règles", "callback_data": "regles"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
-                       MENU_BUTTON]]})
+                       MENU_BUTTON],
+                      [{"text": "🤖 Assistant IA", "callback_data": "assistant"}]]})
+
+    def ask_ai(self, user_id, text):
+        session = self.ai_sessions[user_id]
+        if time.monotonic() - session['time'] >= 900:
+            self.ai_sessions.pop(user_id, None)
+            self.send(user_id, "La discussion a expiré. Ouvre à nouveau le bouton Assistant IA.")
+            return
+        if not text or len(text) > 2000:
+            self.send(user_id, "Écris une question de cinéma de 2 000 caractères maximum.")
+            return
+        if user_id in self.ai_jobs or len(self.ai_jobs) >= 2:
+            self.send(user_id, "Une réponse est déjà en préparation. Réessaie dans un instant.")
+            return
+        if not self.catalogue.reserve_ai(user_id, self.ai_per_user, self.ai_total):
+            self.send(user_id, "La limite quotidienne de l’assistant IA est atteinte. Réessaie demain.")
+            return
+        session['time'] = time.monotonic()
+        future = self.ai_executor.submit(self.ai.answer, text, list(session['history']))
+        self.ai_jobs[user_id] = (future, text, session)
+        self.send(user_id, "🤖 Je prépare ta réponse…", reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+
+    def poll_ai(self):
+        self.ai_sessions = {uid: session for uid, session in self.ai_sessions.items()
+                            if time.monotonic() - session['time'] < 900}
+        for user_id, (future, question, session) in list(self.ai_jobs.items()):
+            if not future.done():
+                continue
+            del self.ai_jobs[user_id]
+            if self.ai_sessions.get(user_id) is not session:
+                continue
+            try:
+                answer, titles = future.result()
+                if not self.check_membership(user_id):
+                    self.ai_sessions.pop(user_id, None)
+                    continue
+                links, seen = [], set()
+                for title in titles:
+                    for film_id, found_title, message_id in self.catalogue.search_channel(self.channel_id, title)[:1]:
+                        if film_id not in seen:
+                            seen.add(film_id)
+                            links.append([{'text': f'🎬 {found_title}'[:64], 'url': self.film_link(message_id)}])
+                if links:
+                    answer += '\n\nFilms trouvés dans le canal :'
+                session['history'] = (session['history'] + [{'role': 'user', 'content': question},
+                    {'role': 'assistant', 'content': answer[:2000]}])[-4:]
+                self.send(user_id, answer, reply_markup={'inline_keyboard': links + [[MENU_BUTTON]]})
+            except OpenAIError as error:
+                LOG.warning('Assistant OpenAI indisponible (code %s).', error.code)
+                self.send(user_id, "L’assistant IA est momentanément indisponible. Réessaie plus tard.",
+                          reply_markup={'inline_keyboard': [[MENU_BUTTON]]})
+            except TelegramError as error:
+                LOG.warning('Réponse IA non confirmée (code %s).', error.code)
 
     def send_contact(self, chat_id, message):
         # Garder le mode contact pour les messages suivants, y compris un album.
@@ -391,7 +468,12 @@ def main():
         notify_id = str(next(iter(admins)))
     if not notify_id or not notify_id.isdigit() or int(notify_id) not in admins:
         raise SystemExit("NOTIFY_CHAT_ID doit désigner un administrateur en privé.")
-    bot = Bot(api, store, admins, allowed, notify_chat_id=int(notify_id))
+    ai_key = os.environ.get('OPENAI_API_KEY', '').strip()
+    ai = CinemaAI(ai_key, os.environ.get('OPENAI_MODEL', 'gpt-4.1-mini')) if ai_key else None
+    per_user, total = int(os.environ.get('OPENAI_DAILY_USER_LIMIT', '20')), int(os.environ.get('OPENAI_DAILY_TOTAL_LIMIT', '100'))
+    if not 1 <= per_user <= 500 or not 1 <= total <= 5000:
+        raise SystemExit('Limites quotidiennes OpenAI invalides.')
+    bot = Bot(api, store, admins, allowed, notify_chat_id=int(notify_id), ai=ai, ai_per_user=per_user, ai_total=total)
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
@@ -412,7 +494,8 @@ def main():
                 clear_commands(api)
                 ready = True
                 LOG.info("Bot vérifié ; réception des messages.")
-            updates = api.call("getUpdates", offset=store.offset(), timeout=30,
+            bot.poll_ai()
+            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs else 30,
                                allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"])
             for update in updates:
                 if stop.is_set():
@@ -433,6 +516,8 @@ def main():
             LOG.warning("Réception indisponible (code %s).", error.code)
             stop.wait(min(error.retry_after or backoff, 300))
             backoff = min(backoff * 2, 60)
+    if bot.ai_executor:
+        bot.ai_executor.shutdown(wait=True, cancel_futures=True)
 
 
 if __name__ == "__main__":

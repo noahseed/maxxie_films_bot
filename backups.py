@@ -20,7 +20,11 @@ def make_backup(database, config, code, units, destination, keep=14):
     destination.mkdir(mode=0o700, parents=True, exist_ok=True)
     destination.chmod(0o700)
     sources = {'config/maxxie-films-bot.env': config}
-    for name in ('bot.py', 'catalogue.py', 'search.py', 'telegram_api.py', 'configure.py', 'backups.py'):
+    openai_config = config.with_name('maxxie-films-openai.env')
+    if openai_config.is_file():
+        sources['config/maxxie-films-openai.env'] = openai_config
+    for name in ('bot.py', 'catalogue.py', 'search.py', 'telegram_api.py', 'openai_api.py',
+                 'configure.py', 'configure_openai.py', 'backups.py'):
         sources['code/' + name] = code / name
     for name in ('maxxie-films-bot.service', 'maxxie-films-backup.service', 'maxxie-films-backup.timer'):
         sources['systemd/' + name] = units / name
