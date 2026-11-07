@@ -205,7 +205,7 @@ class Bot:
                        {"text": "📜 Lire les règles", "callback_data": "regles"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
-                       {"text": "❓ Aide", "callback_data": "aide"}]]})
+                       MENU_BUTTON]]})
 
     def send_contact(self, chat_id, message):
         # Garder le mode contact pour les messages suivants, y compris un album.
