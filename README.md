@@ -70,6 +70,53 @@ s’en servir. Les sessions et leurs références survivent aux redémarrages. A
 contenu de conversation n’est enregistré sur le VPS. Un envoi non confirmé n’est
 pas retenté automatiquement.
 
+## Jaquettes automatiques
+
+Après configuration TMDB, le bot récupère les affiches des films indexés dans le
+canal, y compris les anciens films déjà connus. Les vidéos ne sont pas modifiées :
+la jaquette est envoyée comme photo **en réponse au message du film**, avec la
+source TMDB. Les nouveaux films sont pris en charge automatiquement, qu’ils soient
+publiés via le bot ou directement dans le canal. Les vidéos sont publiées même si
+la jaquette est introuvable.
+
+La recherche utilise le titre et l’année lorsqu’elle est présente ; les mentions
+techniques courantes (1080p, VF, VOSTFR, etc.) sont retirées. Un titre ambigu ou une
+correspondance insuffisante est ignoré plutôt que d’envoyer une affiche au hasard.
+Les titres traduits sont recherchés en français auprès de TMDB.
+
+### Activer les jaquettes
+
+Créer un compte TMDB et obtenir le **API Read Access Token** depuis les
+[paramètres API TMDB](https://www.themoviedb.org/settings/api). Sur le VPS :
+
+```bash
+sudo python3 /opt/maxxie-films-bot/configure_posters.py
+sudo systemctl restart maxxie-films-bot
+```
+
+Le jeton est saisi sans affichage, vérifié et enregistré dans
+`/etc/maxxie-films-tmdb.env`, root 600, sans réutiliser une clé OpenAI. Ce fichier
+est inclus dans les sauvegardes dès qu’il existe. Sans ce jeton, le bot garde son
+fonctionnement actuel et ne cherche pas de jaquette.
+
+Un téléchargement à la fois est effectué en arrière-plan, sans bloquer la
+recherche ni Contact. Les images JPEG (5 Mo maximum) sont conservées dans
+`/var/lib/maxxie-films-bot/posters`, avec un cache limité à 500 fichiers. Les
+connexions utilisent uniquement les domaines API et images de TMDB, sans suivre
+les redirections. Aucun jeton n’est transmis au serveur d’images.
+
+La file SQLite reprend les téléchargements en attente après un redémarrage. Les
+photos envoyées, absentes, en erreur ou au résultat incertain ne sont pas retentées
+automatiquement. Un changement de titre permet une nouvelle recherche si aucune
+photo n’avait été envoyée. Les envois incertains restent bloqués pour éviter les
+doublons. Les erreurs sont visibles dans le journal du service. Les sauvegardes
+incluent la file et la configuration ; le cache d’images, reproductible, n’est pas
+archivé.
+
+This product uses the TMDB API but is not endorsed or certified by TMDB.
+Sources : [authentification TMDB](https://developer.themoviedb.org/docs/authentication-application),
+[images TMDB](https://developer.themoviedb.org/docs/image-basics).
+
 ## Assistant IA OpenAI
 
 Le bouton **Assistant IA** ouvre une discussion consacrée au cinéma. Les messages
@@ -212,7 +259,7 @@ Depuis votre ordinateur, copier le code :
 
 ```bash
 ssh debian@maxxie432.rondeau-cameira.fr 'mkdir -p ~/maxxie-films-bot/deploy'
-scp bot.py catalogue.py search.py telegram_api.py openai_api.py backups.py debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/
+scp bot.py catalogue.py search.py telegram_api.py openai_api.py posters.py backups.py debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/
 scp deploy/* debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/deploy/
 ```
 

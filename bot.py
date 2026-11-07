@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from catalogue import Catalogue
 from telegram_api import Telegram, TelegramError
 from openai_api import CinemaAI, OpenAIError
+from posters import TMDBPosters, PosterError
 
 LOG = logging.getLogger("maxxie-films")
 HELP = ("🎬 Maxxie Films\n\n"
@@ -64,7 +65,7 @@ def clear_commands(api):
 
 class Bot:
     def __init__(self, api, catalogue, admins, allowed_users, channel_id=None, notify_chat_id=None,
-                 ai=None, ai_per_user=20, ai_total=100):
+                 ai=None, ai_per_user=20, ai_total=100, posters=None):
         self.api, self.catalogue = api, catalogue
         self.admins, self.allowed_users = set(admins), set(allowed_users)
         self.channel_id = channel_id
@@ -72,6 +73,9 @@ class Bot:
         self.ai, self.ai_per_user, self.ai_total = ai, ai_per_user, ai_total
         self.ai_sessions, self.ai_jobs = {}, {}
         self.ai_executor = ThreadPoolExecutor(max_workers=2) if ai else None
+        self.posters = posters
+        self.poster_executor = ThreadPoolExecutor(max_workers=1) if posters else None
+        self.poster_job = None
 
     def send(self, chat_id, text, **params):
         return self.api.call("sendMessage", chat_id=chat_id, text=text, **params)
@@ -85,6 +89,8 @@ class Bot:
                     title = post.get("caption", "").strip() or media.get("file_name") or f"Film {post['message_id']}"
                     film_id = self.catalogue.add(media, kind, title)
                     self.catalogue.link_channel(self.channel_id, film_id, post["message_id"])
+                    if self.posters:
+                        self.catalogue.queue_posters(self.channel_id)
             return
         callback = update.get("callback_query")
         message = update.get("message") or (callback or {}).get("message", {})
@@ -381,7 +387,48 @@ class Bot:
         sent = self.api.call("sendVideo" if kind == "video" else "sendDocument",
                              chat_id=self.channel_id, caption=title, **{kind: file_id})
         self.catalogue.link_channel(self.channel_id, film_id, sent["message_id"])
+        if self.posters:
+            self.catalogue.queue_posters(self.channel_id)
         self.send(chat_id, "Film publié dans le canal.")
+
+    def poll_posters(self):
+        if not self.posters:
+            return
+        if self.poster_job:
+            future, channel_id, message_id, film_id, title = self.poster_job
+            if not future.done():
+                return
+            self.poster_job = None
+            sending = False
+            try:
+                poster = future.result()
+                if not poster:
+                    self.catalogue.poster_status(channel_id, message_id, 'not_found')
+                elif self.channel_id != channel_id:
+                    self.catalogue.poster_status(channel_id, message_id, 'failed')
+                elif (self.catalogue.channel_message(channel_id, film_id) != message_id or
+                      (self.catalogue.get(film_id) or ('', '', ''))[2] != title):
+                    self.catalogue.poster_status(channel_id, message_id, 'queued')
+                    self.catalogue.queue_posters(channel_id)
+                else:
+                    # Écrire avant envoi : ne pas répéter une photo au résultat incertain.
+                    self.catalogue.poster_status(channel_id, message_id, 'uncertain')
+                    sending = True
+                    self.api.send_photo(channel_id, poster['path'],
+                        f"🎬 {poster['title']}\nJaquette : TMDB\nhttps://www.themoviedb.org/movie/{poster['id']}", message_id)
+                    self.catalogue.poster_status(channel_id, message_id, 'sent')
+            except PosterError as error:
+                self.catalogue.poster_status(channel_id, message_id, 'failed')
+                LOG.warning('Récupération de jaquette impossible (code %s).', error.code)
+            except (TelegramError, OSError, ValueError):
+                if not sending:
+                    self.catalogue.poster_status(channel_id, message_id, 'failed')
+                LOG.warning('Envoi de jaquette non confirmé ; aucun renvoi automatique.')
+        row = self.catalogue.next_poster(self.channel_id)
+        if row:
+            message_id, film_id, title = row
+            self.poster_job = (self.poster_executor.submit(self.posters.download, title),
+                               self.channel_id, message_id, film_id, title)
 
     def show_duplicate(self, chat_id, film_id, title, message_id):
         url = self.film_link(message_id)
@@ -473,7 +520,9 @@ def main():
     per_user, total = int(os.environ.get('OPENAI_DAILY_USER_LIMIT', '20')), int(os.environ.get('OPENAI_DAILY_TOTAL_LIMIT', '100'))
     if not 1 <= per_user <= 500 or not 1 <= total <= 5000:
         raise SystemExit('Limites quotidiennes OpenAI invalides.')
-    bot = Bot(api, store, admins, allowed, notify_chat_id=int(notify_id), ai=ai, ai_per_user=per_user, ai_total=total)
+    tmdb_token = os.environ.get('TMDB_READ_TOKEN', '').strip()
+    posters = TMDBPosters(tmdb_token, path.parent / 'posters') if tmdb_token else None
+    bot = Bot(api, store, admins, allowed, notify_chat_id=int(notify_id), ai=ai, ai_per_user=per_user, ai_total=total, posters=posters)
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
@@ -492,10 +541,13 @@ def main():
                 except ValueError as error:
                     raise SystemExit(str(error)) from None
                 clear_commands(api)
+                if bot.posters:
+                    store.queue_posters(bot.channel_id)
                 ready = True
                 LOG.info("Bot vérifié ; réception des messages.")
             bot.poll_ai()
-            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs else 30,
+            bot.poll_posters()
+            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs or bot.poster_job else 30,
                                allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"])
             for update in updates:
                 if stop.is_set():
@@ -518,6 +570,8 @@ def main():
             backoff = min(backoff * 2, 60)
     if bot.ai_executor:
         bot.ai_executor.shutdown(wait=True, cancel_futures=True)
+    if bot.poster_executor:
+        bot.poster_executor.shutdown(wait=True, cancel_futures=True)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ import logging
 import re
 import socket
 import time
+import secrets
+from pathlib import Path
 
 LOG = logging.getLogger('maxxie-films')
 READ_METHODS = frozenset({'getMe', 'getChat', 'getChatMember', 'getWebhookInfo',
@@ -51,6 +53,20 @@ class Telegram:
             self._connection = None
 
     def call(self, method, **params):
+        upload = params.pop('_upload', None)
+        if upload is None:
+            request_body = json.dumps(params).encode('utf-8')
+            headers = {'Content-Type': 'application/json'}
+        else:
+            boundary = 'maxxie-' + secrets.token_hex(16)
+            chunks = []
+            for key, value in params.items():
+                value = json.dumps(value) if isinstance(value, (dict, list, bool)) else str(value)
+                chunks.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
+            chunks.extend([f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="poster.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode(),
+                           upload, f'\r\n--{boundary}--\r\n'.encode()])
+            request_body = b''.join(chunks)
+            headers = {'Content-Type': 'multipart/form-data; boundary=' + boundary}
         started = time.monotonic()
         read_timeout = params.get('timeout', 30) + 5 if method == 'getUpdates' else 8
         # Seules les lectures peuvent être retentées. Un envoi incertain
@@ -67,8 +83,7 @@ class Telegram:
                     connection.connect()
                 connection.sock.settimeout(read_timeout)
                 connection.request('POST', self._path + method,
-                                   json.dumps(params).encode('utf-8'),
-                                   {'Content-Type': 'application/json'})
+                                   request_body, headers)
                 response = connection.getresponse()
                 body = response.read()
                 status = response.status
@@ -95,3 +110,11 @@ class Telegram:
                 self.close()
                 raise TelegramError(0)
             return result['result']
+
+    def send_photo(self, chat_id, path, caption, message_id):
+        with Path(path).open('rb') as stream:
+            body = stream.read(5_000_001)
+        if len(body) > 5_000_000 or not body.startswith(b'\xff\xd8\xff'):
+            raise ValueError('Fichier de jaquette invalide')
+        return self.call('sendPhoto', chat_id=chat_id, caption=caption[:1024],
+                         reply_parameters={'message_id': message_id}, _upload=body)

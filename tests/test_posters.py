@@ -1,0 +1,142 @@
+from concurrent.futures import Future
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import Mock, patch
+
+from bot import Bot
+from catalogue import Catalogue
+from posters import TMDBPosters, PosterError, movie_query, select_movie
+from telegram_api import Telegram, TelegramError
+
+
+def movie(number=1, year='1999', title='Matrix'):
+    return {'id': number, 'title': title, 'original_title': title,
+            'release_date': year + '-03-31', 'poster_path': '/Abc123.jpg'}
+
+
+class PosterDownloadTests(unittest.TestCase):
+    def test_filename_cleanup_and_release_year(self):
+        self.assertEqual(movie_query('Matrix.1999.1080p.VF.x264.mp4'), ('Matrix', '1999'))
+        self.assertEqual(movie_query('Alien - 1979 [VOSTFR].mkv'), ('Alien', '1979'))
+
+    def test_ambiguous_remakes_wrong_year_and_unrelated_titles_are_rejected(self):
+        self.assertIsNone(select_movie([movie(1, '1999'), movie(2, '2020')], 'Matrix', ''))
+        self.assertEqual(select_movie([movie(1, '1999'), movie(2, '2020')], 'Matrix', '1999')['id'], 1)
+        self.assertIsNone(select_movie([movie()], 'Alien', '1999'))
+        self.assertIsNone(select_movie([movie()], 'Matrix', '2000'))
+
+    def test_unsafe_poster_path_is_rejected(self):
+        result = movie()
+        result['poster_path'] = '/../../config.env'
+        self.assertIsNone(select_movie([result], 'Matrix', '1999'))
+
+    def test_jpeg_is_downloaded_to_private_cache_and_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client = TMDBPosters('secret', directory)
+            metadata = json.dumps({'results': [movie()]}).encode()
+            client._get = Mock(side_effect=[metadata, b'\xff\xd8\xffimage', metadata])
+            first = client.download('Matrix 1999 VF')
+            self.assertTrue(first['path'].is_file())
+            self.assertEqual(first['path'].read_bytes(), b'\xff\xd8\xffimage')
+            self.assertEqual(first['path'].stat().st_mode & 0o777, 0o600)
+            self.assertEqual(client.download('Matrix 1999 VF')['path'], first['path'])
+            self.assertEqual(client._get.call_count, 3)
+
+    @patch('posters.http.client.HTTPSConnection')
+    def test_image_download_has_no_tmdb_secret_in_headers(self, factory):
+        response = factory.return_value.getresponse.return_value
+        response.status = 200
+        response.read.return_value = b'\xff\xd8\xffimage'
+        response.getheader.return_value = 'image/jpeg'
+        client = TMDBPosters('secret', '/tmp/unused')
+        client._get('image.tmdb.org', '/t/p/w500/Abc.jpg', image=True)
+        self.assertNotIn('Authorization', factory.return_value.request.call_args.kwargs['headers'])
+
+    @patch('posters.http.client.HTTPSConnection')
+    def test_html_is_not_saved_as_a_poster(self, factory):
+        response = factory.return_value.getresponse.return_value
+        response.status = 200
+        response.read.return_value = b'<html>error</html>'
+        response.getheader.return_value = 'text/html'
+        with self.assertRaises(PosterError):
+            TMDBPosters('secret', '/tmp/unused')._get('image.tmdb.org', '/t/p/w500/a.jpg', image=True)
+
+
+class PosterQueueTests(unittest.TestCase):
+    def setUp(self):
+        self.api = Mock()
+        self.store = Catalogue(':memory:')
+        self.provider = Mock()
+        self.bot = Bot(self.api, self.store, {1}, {2}, -100123, posters=self.provider)
+        self.bot.poster_executor.shutdown()
+        self.future = Future()
+        self.bot.poster_executor = Mock()
+        self.bot.poster_executor.submit.return_value = self.future
+        self.film_id = self.store.add({'file_id': 'f', 'file_unique_id': 'f'}, 'video', 'Matrix 1999')
+        self.store.link_channel(-100123, self.film_id, 50)
+        self.store.queue_posters(-100123)
+
+    def tearDown(self):
+        self.store.db.close()
+
+    def status(self):
+        return self.store.db.execute('SELECT status FROM poster_jobs').fetchone()[0]
+
+    def test_photo_replies_to_video_and_is_not_queued_again(self):
+        self.bot.poll_posters()
+        self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
+        self.bot.poll_posters()
+        self.api.send_photo.assert_called_once()
+        self.assertEqual(self.api.send_photo.call_args.args[0], -100123)
+        self.assertEqual(self.api.send_photo.call_args.args[3], 50)
+        self.assertEqual(self.status(), 'sent')
+        self.store.queue_posters(-100123)
+        self.assertIsNone(self.store.next_poster(-100123))
+
+    def test_uncertain_telegram_send_is_not_retried(self):
+        self.bot.poll_posters()
+        self.api.send_photo.side_effect = TelegramError(0)
+        self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
+        with self.assertLogs('maxxie-films', level='WARNING'):
+            self.bot.poll_posters()
+        self.assertEqual(self.status(), 'uncertain')
+        self.store.queue_posters(-100123)
+        self.assertIsNone(self.store.next_poster(-100123))
+
+    def test_no_match_does_not_send_any_photo(self):
+        self.bot.poll_posters()
+        self.future.set_result(None)
+        self.bot.poll_posters()
+        self.api.send_photo.assert_not_called()
+        self.assertEqual(self.status(), 'not_found')
+
+    def test_deleted_reference_does_not_receive_a_photo(self):
+        self.bot.poll_posters()
+        self.store.remove(self.film_id)
+        self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
+        self.bot.poll_posters()
+        self.api.send_photo.assert_not_called()
+
+
+class PhotoUploadTests(unittest.TestCase):
+    @patch('telegram_api.http.client.HTTPSConnection')
+    def test_photo_upload_is_multipart_and_preserves_video_reply(self, factory):
+        response = factory.return_value.getresponse.return_value
+        response.will_close = False
+        response.read.return_value = b'{"ok":true,"result":{"message_id":51}}'
+        with tempfile.TemporaryDirectory() as directory:
+            photo = Path(directory) / 'poster.jpg'
+            photo.write_bytes(b'\xff\xd8\xffimage')
+            Telegram('123:secret').send_photo(-100123, photo, 'Matrix', 50)
+        request = factory.return_value.request.call_args
+        self.assertEqual(request.args[1], '/bot123:secret/sendPhoto')
+        self.assertTrue(request.args[3]['Content-Type'].startswith('multipart/form-data; boundary='))
+        self.assertIn(b'\xff\xd8\xffimage', request.args[2])
+        self.assertIn(b'{"message_id": 50}', request.args[2])
+        self.assertEqual(factory.return_value.request.call_count, 1)
+
+
+if __name__ == '__main__':
+    unittest.main()

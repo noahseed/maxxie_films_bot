@@ -23,8 +23,11 @@ def make_backup(database, config, code, units, destination, keep=14):
     openai_config = config.with_name('maxxie-films-openai.env')
     if openai_config.is_file():
         sources['config/maxxie-films-openai.env'] = openai_config
+    tmdb_config = config.with_name('maxxie-films-tmdb.env')
+    if tmdb_config.is_file():
+        sources['config/maxxie-films-tmdb.env'] = tmdb_config
     for name in ('bot.py', 'catalogue.py', 'search.py', 'telegram_api.py', 'openai_api.py',
-                 'configure.py', 'configure_openai.py', 'backups.py'):
+                 'posters.py', 'configure.py', 'configure_openai.py', 'configure_posters.py', 'backups.py'):
         sources['code/' + name] = code / name
     for name in ('maxxie-films-bot.service', 'maxxie-films-backup.service', 'maxxie-films-backup.timer'):
         sources['systemd/' + name] = units / name

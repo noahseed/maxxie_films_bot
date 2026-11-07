@@ -19,7 +19,7 @@ class BackupTests(unittest.TestCase):
         self.code.mkdir()
         self.units.mkdir()
         for name in ('bot.py', 'catalogue.py', 'search.py', 'telegram_api.py', 'openai_api.py',
-                     'configure.py', 'configure_openai.py', 'backups.py'):
+                     'posters.py', 'configure.py', 'configure_openai.py', 'configure_posters.py', 'backups.py'):
             (self.code / name).write_text('# code')
         for name in ('maxxie-films-bot.service', 'maxxie-films-backup.service', 'maxxie-films-backup.timer'):
             (self.units / name).write_text('[Unit]')

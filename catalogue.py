@@ -24,6 +24,10 @@ class Catalogue:
             CREATE TABLE IF NOT EXISTS ai_usage (
                 day TEXT NOT NULL, user_id INTEGER NOT NULL, requests INTEGER NOT NULL,
                 PRIMARY KEY(day,user_id));
+            CREATE TABLE IF NOT EXISTS poster_jobs (
+                channel_id INTEGER NOT NULL, message_id INTEGER NOT NULL, film_id INTEGER NOT NULL,
+                title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+                PRIMARY KEY(channel_id,message_id));
             CREATE TABLE IF NOT EXISTS contact_requests (
                 user_id INTEGER PRIMARY KEY, expires_at INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS contact_threads (
@@ -165,3 +169,26 @@ class Catalogue:
             self.db.execute("INSERT INTO ai_usage VALUES(?,?,1) ON CONFLICT(day,user_id) DO UPDATE SET requests=requests+1",
                             (day, user_id))
             return True
+
+    def queue_posters(self, channel_id):
+        with self.db:
+            self.db.execute("""INSERT INTO poster_jobs(channel_id,message_id,film_id,title)
+                SELECT channel_films.channel_id,channel_films.message_id,films.id,films.title
+                FROM channel_films JOIN films ON films.id=channel_films.film_id
+                WHERE channel_films.channel_id=?
+                ON CONFLICT(channel_id,message_id) DO UPDATE SET
+                    film_id=excluded.film_id,title=excluded.title,status='queued'
+                WHERE poster_jobs.film_id<>excluded.film_id OR
+                    (poster_jobs.title<>excluded.title AND poster_jobs.status NOT IN ('sent','uncertain'))""", (channel_id,))
+
+    def next_poster(self, channel_id):
+        return self.db.execute("""SELECT poster_jobs.message_id,poster_jobs.film_id,poster_jobs.title
+            FROM poster_jobs JOIN channel_films ON channel_films.channel_id=poster_jobs.channel_id
+                AND channel_films.message_id=poster_jobs.message_id AND channel_films.film_id=poster_jobs.film_id
+            WHERE poster_jobs.channel_id=? AND poster_jobs.status='queued'
+            ORDER BY poster_jobs.message_id LIMIT 1""", (channel_id,)).fetchone()
+
+    def poster_status(self, channel_id, message_id, status):
+        with self.db:
+            self.db.execute("UPDATE poster_jobs SET status=? WHERE channel_id=? AND message_id=?",
+                            (status, channel_id, message_id))

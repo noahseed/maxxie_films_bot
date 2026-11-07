@@ -12,6 +12,7 @@ Group=maxxie-films-bot
 WorkingDirectory=/opt/maxxie-films-bot
 EnvironmentFile=/etc/maxxie-films-bot.env
 EnvironmentFile=-/etc/maxxie-films-openai.env
+EnvironmentFile=-/etc/maxxie-films-tmdb.env
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 /opt/maxxie-films-bot/bot.py
 Restart=on-failure
