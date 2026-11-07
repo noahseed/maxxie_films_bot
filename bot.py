@@ -89,6 +89,7 @@ class Bot:
                     title = post.get("caption", "").strip() or media.get("file_name") or f"Film {post['message_id']}"
                     film_id = self.catalogue.add(media, kind, title)
                     self.catalogue.link_channel(self.channel_id, film_id, post["message_id"])
+                    self.catalogue.remember_video(self.channel_id, post)
                     if self.posters:
                         self.catalogue.queue_posters(self.channel_id)
             return
@@ -387,6 +388,11 @@ class Bot:
         sent = self.api.call("sendVideo" if kind == "video" else "sendDocument",
                              chat_id=self.channel_id, caption=title, **{kind: file_id})
         self.catalogue.link_channel(self.channel_id, film_id, sent["message_id"])
+        if kind == 'video':
+            snapshot = dict(sent)
+            snapshot.setdefault('video', {'file_id': file_id})
+            snapshot.setdefault('caption', title)
+            self.catalogue.remember_video(self.channel_id, snapshot)
         if self.posters:
             self.catalogue.queue_posters(self.channel_id)
         self.send(chat_id, "Film publié dans le canal.")
@@ -411,12 +417,15 @@ class Bot:
                     self.catalogue.poster_status(channel_id, message_id, 'queued')
                     self.catalogue.queue_posters(channel_id)
                 else:
-                    # Écrire avant envoi : ne pas répéter une photo au résultat incertain.
-                    self.catalogue.poster_status(channel_id, message_id, 'uncertain')
+                    media = self.catalogue.video_message(channel_id, message_id)
+                    if not media:
+                        self.catalogue.poster_status(channel_id, message_id, 'failed')
+                        return
+                    # Modifier le post existant, sans publier de photo séparée.
+                    self.catalogue.poster_status(channel_id, message_id, 'cover_uncertain')
                     sending = True
-                    self.api.send_photo(channel_id, poster['path'],
-                        f"🎬 {poster['title']}\nJaquette : TMDB\nhttps://www.themoviedb.org/movie/{poster['id']}", message_id)
-                    self.catalogue.poster_status(channel_id, message_id, 'sent')
+                    self.api.edit_video_cover(channel_id, message_id, media, poster['path'])
+                    self.catalogue.poster_status(channel_id, message_id, 'covered')
             except PosterError as error:
                 self.catalogue.poster_status(channel_id, message_id, 'failed')
                 LOG.warning('Récupération de jaquette impossible (code %s).', error.code)

@@ -84,24 +84,25 @@ class PosterQueueTests(unittest.TestCase):
     def status(self):
         return self.store.db.execute('SELECT status FROM poster_jobs').fetchone()[0]
 
-    def test_photo_replies_to_video_and_is_not_queued_again(self):
+    def test_cover_edits_existing_video_and_is_not_queued_again(self):
         self.bot.poll_posters()
         self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
         self.bot.poll_posters()
-        self.api.send_photo.assert_called_once()
-        self.assertEqual(self.api.send_photo.call_args.args[0], -100123)
-        self.assertEqual(self.api.send_photo.call_args.args[3], 50)
-        self.assertEqual(self.status(), 'sent')
+        self.api.edit_video_cover.assert_called_once()
+        self.api.send_photo.assert_not_called()
+        self.assertEqual(self.api.edit_video_cover.call_args.args[0], -100123)
+        self.assertEqual(self.api.edit_video_cover.call_args.args[1], 50)
+        self.assertEqual(self.status(), 'covered')
         self.store.queue_posters(-100123)
         self.assertIsNone(self.store.next_poster(-100123))
 
     def test_uncertain_telegram_send_is_not_retried(self):
         self.bot.poll_posters()
-        self.api.send_photo.side_effect = TelegramError(0)
+        self.api.edit_video_cover.side_effect = TelegramError(0)
         self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
         with self.assertLogs('maxxie-films', level='WARNING'):
             self.bot.poll_posters()
-        self.assertEqual(self.status(), 'uncertain')
+        self.assertEqual(self.status(), 'cover_uncertain')
         self.store.queue_posters(-100123)
         self.assertIsNone(self.store.next_poster(-100123))
 
@@ -110,6 +111,7 @@ class PosterQueueTests(unittest.TestCase):
         self.future.set_result(None)
         self.bot.poll_posters()
         self.api.send_photo.assert_not_called()
+        self.api.edit_video_cover.assert_not_called()
         self.assertEqual(self.status(), 'not_found')
 
     def test_deleted_reference_does_not_receive_a_photo(self):
@@ -118,9 +120,55 @@ class PosterQueueTests(unittest.TestCase):
         self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
         self.bot.poll_posters()
         self.api.send_photo.assert_not_called()
+        self.api.edit_video_cover.assert_not_called()
+
+    def test_caption_entities_and_original_video_are_preserved(self):
+        entities = [{'type': 'bold', 'offset': 0, 'length': 6}]
+        self.store.remember_video(-100123, {'message_id': 50,
+            'video': {'file_id': 'original-video', 'duration': 120},
+            'caption': 'Matrix\nLégende complète', 'caption_entities': entities})
+        self.bot.poll_posters()
+        self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
+        self.bot.poll_posters()
+        media = self.api.edit_video_cover.call_args.args[2]
+        self.assertEqual(media['media'], 'original-video')
+        self.assertEqual(media['caption'], 'Matrix\nLégende complète')
+        self.assertEqual(media['caption_entities'], entities)
+        self.assertEqual(media['duration'], 120)
+
+    def test_old_comment_jobs_are_migrated_to_video_covers(self):
+        self.store.poster_status(-100123, 50, 'sent')
+        self.store.queue_posters(-100123)
+        self.assertEqual(self.status(), 'queued')
+        self.assertEqual(self.store.video_message(-100123, 50)['caption'], 'Matrix 1999')
+
+    def test_document_is_not_converted_to_video(self):
+        document_id = self.store.add({'file_id': 'd', 'file_unique_id': 'd'}, 'document', 'Document')
+        self.store.link_channel(-100123, document_id, 51)
+        self.store.poster_status(-100123, 50, 'covered')
+        self.store.queue_posters(-100123)
+        self.assertIsNone(self.store.next_poster(-100123))
 
 
 class PhotoUploadTests(unittest.TestCase):
+    @patch('telegram_api.http.client.HTTPSConnection')
+    def test_cover_edits_message_without_new_photo_or_video_upload(self, factory):
+        response = factory.return_value.getresponse.return_value
+        response.will_close = False
+        response.read.return_value = b'{"ok":true,"result":{"message_id":50}}'
+        with tempfile.TemporaryDirectory() as directory:
+            photo = Path(directory) / 'poster.jpg'
+            photo.write_bytes(b'\xff\xd8\xffimage')
+            Telegram('123:secret').edit_video_cover(-100123, 50,
+                {'type': 'video', 'media': 'original-video', 'caption': 'Titre'}, photo)
+        request = factory.return_value.request.call_args
+        self.assertEqual(request.args[1], '/bot123:secret/editMessageMedia')
+        self.assertIn(b'name="cover"; filename="poster.jpg"', request.args[2])
+        self.assertIn(b'attach://cover', request.args[2])
+        self.assertIn(b'original-video', request.args[2])
+        self.assertNotIn(b'name="photo"', request.args[2])
+        self.assertNotIn(b'reply_parameters', request.args[2])
+
     @patch('telegram_api.http.client.HTTPSConnection')
     def test_photo_upload_is_multipart_and_preserves_video_reply(self, factory):
         response = factory.return_value.getresponse.return_value

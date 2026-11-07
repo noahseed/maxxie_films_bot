@@ -73,11 +73,19 @@ pas retenté automatiquement.
 ## Jaquettes automatiques
 
 Après configuration TMDB, le bot récupère les affiches des films indexés dans le
-canal, y compris les anciens films déjà connus. Les vidéos ne sont pas modifiées :
-la jaquette est envoyée comme photo **en réponse au message du film**, avec la
-source TMDB. Les nouveaux films sont pris en charge automatiquement, qu’ils soient
-publiés via le bot ou directement dans le canal. Les vidéos sont publiées même si
-la jaquette est introuvable.
+canal, y compris les anciens films déjà connus. Le bot modifie le **post vidéo existant** pour ajouter la jaquette comme
+**couverture**, en réutilisant la même vidéo Telegram. Aucune photo séparée et
+aucun nouveau commentaire ne sont créés. Le lien du message est conservé. Les nouveaux films sont pris en charge automatiquement, qu’ils soient
+publiés via le bot ou directement dans le canal. Les vidéos sont publiées même si la jaquette est introuvable. Les fichiers envoyés
+comme documents restent des documents : ils ne sont pas convertis en vidéo.
+
+Pour les nouveaux posts, la légende complète et ses entités de mise en forme sont
+mémorisées et conservées lors de la modification. Pour les anciennes vidéos dont
+le bot ne disposait pas de la légende complète, le titre enregistré est utilisé
+comme légende, conformément au choix de l’administrateur. Les anciennes jaquettes
+envoyées séparément ne sont pas supprimées automatiquement, leurs identifiants
+n’ayant pas été enregistrés. Le bot doit avoir le droit de modifier les messages
+du canal. Telegram choisit l’affichage de la couverture, sans placement gauche/droite imposable.
 
 La recherche utilise le titre et l’année lorsqu’elle est présente ; les mentions
 techniques courantes (1080p, VF, VOSTFR, etc.) sont retirées. Un titre ambigu ou une
@@ -106,10 +114,12 @@ connexions utilisent uniquement les domaines API et images de TMDB, sans suivre
 les redirections. Aucun jeton n’est transmis au serveur d’images.
 
 La file SQLite reprend les téléchargements en attente après un redémarrage. Les
-photos envoyées, absentes, en erreur ou au résultat incertain ne sont pas retentées
-automatiquement. Un changement de titre permet une nouvelle recherche si aucune
-photo n’avait été envoyée. Les envois incertains restent bloqués pour éviter les
-doublons. Les erreurs sont visibles dans le journal du service. Les sauvegardes
+couvertures appliquées (`covered`) et les modifications au résultat incertain
+(`cover_uncertain`) ne sont pas répétées automatiquement. Les anciennes tâches de
+photos séparées sont reprises pour appliquer une couverture. Un changement de
+titre permet une nouvelle recherche si aucune couverture n’avait été appliquée.
+Les tâches sans correspondance ou en erreur ne sont pas retentées sans changement
+de titre. Les erreurs sont visibles dans le journal du service. Les sauvegardes
 incluent la file et la configuration ; le cache d’images, reproductible, n’est pas
 archivé.
 

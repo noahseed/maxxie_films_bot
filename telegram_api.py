@@ -54,6 +54,9 @@ class Telegram:
 
     def call(self, method, **params):
         upload = params.pop('_upload', None)
+        upload_field = params.pop('_upload_field', 'photo')
+        if upload_field not in ('photo', 'cover'):
+            raise ValueError('Champ de fichier invalide')
         if upload is None:
             request_body = json.dumps(params).encode('utf-8')
             headers = {'Content-Type': 'application/json'}
@@ -63,7 +66,7 @@ class Telegram:
             for key, value in params.items():
                 value = json.dumps(value) if isinstance(value, (dict, list, bool)) else str(value)
                 chunks.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
-            chunks.extend([f'--{boundary}\r\nContent-Disposition: form-data; name="photo"; filename="poster.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode(),
+            chunks.extend([f'--{boundary}\r\nContent-Disposition: form-data; name="{upload_field}"; filename="poster.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'.encode(),
                            upload, f'\r\n--{boundary}--\r\n'.encode()])
             request_body = b''.join(chunks)
             headers = {'Content-Type': 'multipart/form-data; boundary=' + boundary}
@@ -118,3 +121,14 @@ class Telegram:
             raise ValueError('Fichier de jaquette invalide')
         return self.call('sendPhoto', chat_id=chat_id, caption=caption[:1024],
                          reply_parameters={'message_id': message_id}, _upload=body)
+
+    def edit_video_cover(self, chat_id, message_id, media, path):
+        if media.get('type') != 'video' or not media.get('media'):
+            raise ValueError('Référence vidéo invalide')
+        with Path(path).open('rb') as stream:
+            body = stream.read(5_000_001)
+        if len(body) > 5_000_000 or not body.startswith(b'\xff\xd8\xff'):
+            raise ValueError('Fichier de couverture invalide')
+        updated = dict(media, cover='attach://cover')
+        return self.call('editMessageMedia', chat_id=chat_id, message_id=message_id,
+                         media=updated, _upload=body, _upload_field='cover')

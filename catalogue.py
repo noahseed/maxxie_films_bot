@@ -3,6 +3,7 @@ import sqlite3
 import unicodedata
 import time
 import secrets
+import json
 from search import ranked_results
 
 
@@ -27,6 +28,9 @@ class Catalogue:
             CREATE TABLE IF NOT EXISTS poster_jobs (
                 channel_id INTEGER NOT NULL, message_id INTEGER NOT NULL, film_id INTEGER NOT NULL,
                 title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
+                PRIMARY KEY(channel_id,message_id));
+            CREATE TABLE IF NOT EXISTS video_messages (
+                channel_id INTEGER NOT NULL, message_id INTEGER NOT NULL, media TEXT NOT NULL,
                 PRIMARY KEY(channel_id,message_id));
             CREATE TABLE IF NOT EXISTS contact_requests (
                 user_id INTEGER PRIMARY KEY, expires_at INTEGER NOT NULL);
@@ -172,23 +176,51 @@ class Catalogue:
 
     def queue_posters(self, channel_id):
         with self.db:
+            # Migration autorisée : pour les anciens posts, conserver le titre connu.
+            for message_id, file_id, title in self.db.execute("""SELECT channel_films.message_id,films.file_id,films.title
+                FROM channel_films JOIN films ON films.id=channel_films.film_id
+                WHERE channel_films.channel_id=? AND films.kind='video'""", (channel_id,)).fetchall():
+                media = json.dumps({'type': 'video', 'media': file_id, 'caption': title})
+                self.db.execute('INSERT OR IGNORE INTO video_messages VALUES(?,?,?)', (channel_id, message_id, media))
+            self.db.execute("UPDATE poster_jobs SET status='queued' WHERE channel_id=? AND status IN ('sent','uncertain')", (channel_id,))
             self.db.execute("""INSERT INTO poster_jobs(channel_id,message_id,film_id,title)
                 SELECT channel_films.channel_id,channel_films.message_id,films.id,films.title
                 FROM channel_films JOIN films ON films.id=channel_films.film_id
-                WHERE channel_films.channel_id=?
+                WHERE channel_films.channel_id=? AND films.kind='video'
                 ON CONFLICT(channel_id,message_id) DO UPDATE SET
                     film_id=excluded.film_id,title=excluded.title,status='queued'
                 WHERE poster_jobs.film_id<>excluded.film_id OR
-                    (poster_jobs.title<>excluded.title AND poster_jobs.status NOT IN ('sent','uncertain'))""", (channel_id,))
+                    (poster_jobs.title<>excluded.title AND poster_jobs.status NOT IN ('covered','cover_uncertain'))""", (channel_id,))
 
     def next_poster(self, channel_id):
         return self.db.execute("""SELECT poster_jobs.message_id,poster_jobs.film_id,poster_jobs.title
             FROM poster_jobs JOIN channel_films ON channel_films.channel_id=poster_jobs.channel_id
                 AND channel_films.message_id=poster_jobs.message_id AND channel_films.film_id=poster_jobs.film_id
-            WHERE poster_jobs.channel_id=? AND poster_jobs.status='queued'
+            JOIN films ON films.id=poster_jobs.film_id
+            WHERE poster_jobs.channel_id=? AND poster_jobs.status='queued' AND films.kind='video'
             ORDER BY poster_jobs.message_id LIMIT 1""", (channel_id,)).fetchone()
 
     def poster_status(self, channel_id, message_id, status):
         with self.db:
             self.db.execute("UPDATE poster_jobs SET status=? WHERE channel_id=? AND message_id=?",
                             (status, channel_id, message_id))
+
+    def remember_video(self, channel_id, message):
+        video = message.get('video', {})
+        if not video.get('file_id'):
+            return
+        media = {'type': 'video', 'media': video['file_id'], 'caption': message.get('caption', '')}
+        for key in ('width', 'height', 'duration', 'start_timestamp'):
+            if key in video:
+                media[key] = video[key]
+        for key in ('caption_entities', 'has_spoiler', 'show_caption_above_media'):
+            if key in message:
+                media[key] = message[key]
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO video_messages VALUES(?,?,?)',
+                            (channel_id, message['message_id'], json.dumps(media)))
+
+    def video_message(self, channel_id, message_id):
+        row = self.db.execute('SELECT media FROM video_messages WHERE channel_id=? AND message_id=?',
+                              (channel_id, message_id)).fetchone()
+        return json.loads(row[0]) if row else None
