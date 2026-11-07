@@ -117,6 +117,8 @@ class Bot:
             self.catalogue.clear_reply(user_id)
             self.ai_sessions.pop(user_id, None)
             return
+        if not callback and text.startswith('/'):
+            self.ai_sessions.pop(user_id, None)
         if not callback and command == "/id":
             self.send(chat_id, f"Ton identifiant Telegram : {user_id}")
             return
@@ -133,8 +135,8 @@ class Bot:
                 self.ai_sessions = {uid: session for uid, session in self.ai_sessions.items()
                                     if time.monotonic() - session['time'] < 900}
                 self.ai_sessions[user_id] = {'time': time.monotonic(), 'history': []}
-                self.send(chat_id, "🤖 Pose ta question sur le cinéma ou décris le film que tu cherches. "
-                          "Tes messages dans ce mode sont envoyés à OpenAI. Le bouton Menu termine la discussion.",
+                self.send(chat_id, "🤖 Assistant IA activé. Pose ta question sur le cinéma ou décris le film que tu cherches. "
+                          "Tes messages dans ce mode sont envoyés à OpenAI. Le bouton Menu désactive l’IA.",
                           reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
             elif data.startswith("repondre:"):
                 target = (self.catalogue.begin_reply(user_id, data.split(":", 1)[1])
@@ -238,7 +240,11 @@ class Bot:
                       [{"text": "🤖 Assistant IA", "callback_data": "assistant"}]]})
 
     def ask_ai(self, user_id, text):
-        session = self.ai_sessions[user_id]
+        session = self.ai_sessions.get(user_id)
+        if not self.ai or session is None:
+            self.send(user_id, "Active d’abord le bouton Assistant IA pour discuter avec OpenAI.",
+                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+            return
         if time.monotonic() - session['time'] >= 900:
             self.ai_sessions.pop(user_id, None)
             self.send(user_id, "La discussion a expiré. Ouvre à nouveau le bouton Assistant IA.")

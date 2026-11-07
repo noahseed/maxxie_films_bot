@@ -131,7 +131,14 @@ Sources : [authentification TMDB](https://developer.themoviedb.org/docs/authenti
 
 ## Assistant IA OpenAI
 
-Le bouton **Assistant IA** ouvre une discussion consacrée au cinéma. Les messages
+Le bouton **Assistant IA** ouvre une discussion consacrée au cinéma. Aucun appel
+OpenAI ne part au démarrage du bot, à l’affichage du menu ou au clic sur le bouton
+seul : il faut activer ce bouton puis envoyer un texte. La recherche classique,
+les règles, Contact et la gestion des jaquettes ne déclenchent aucun appel OpenAI.
+Une navigation vers le menu ou un autre bouton, une commande ou l’expiration de
+la session désactive l’IA pour les prochains messages. Une requête déjà transmise
+à OpenAI avant cette désactivation peut toutefois être déjà facturée.
+ Les messages
 saisis dans ce mode sont envoyés à OpenAI ; les conversations Contact, la recherche
 classique et les vidéos ne le sont pas. L’IA propose des titres, puis le bot ajoute
 uniquement des liens vérifiés vers les publications de son canal. Une suggestion

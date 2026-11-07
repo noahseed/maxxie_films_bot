@@ -95,6 +95,39 @@ class AssistantTests(unittest.TestCase):
         self.callback('contact')
         self.assertEqual(self.bot.ai_executor.submit.call_count, 0)
 
+    def test_direct_ai_entry_without_activation_never_uses_api_or_quota(self):
+        self.bot.ask_ai(2, 'Bonjour')
+        self.bot.ai_executor.submit.assert_not_called()
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ai_usage').fetchone()[0], 0)
+
+    def test_clicking_assistant_does_not_itself_generate_a_response(self):
+        self.callback('assistant')
+        self.bot.ai_executor.submit.assert_not_called()
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ai_usage').fetchone()[0], 0)
+
+    def test_navigation_disables_ai_before_further_messages(self):
+        for action in ('menu', 'contact', 'regles', 'recherche', 'aide', 'abonnement'):
+            self.callback('assistant')
+            self.callback(action)
+            self.message('Matrix')
+            self.assertNotIn(2, self.bot.ai_sessions)
+            self.bot.ai_executor.submit.assert_not_called()
+
+    def test_id_command_also_disables_ai(self):
+        self.callback('assistant')
+        self.message('/id')
+        self.message('Matrix')
+        self.assertNotIn(2, self.bot.ai_sessions)
+        self.bot.ai_executor.submit.assert_not_called()
+
+    def test_expired_activation_never_uses_api_or_quota(self):
+        self.callback('assistant')
+        self.bot.ai_sessions[2]['time'] = 0
+        with patch('bot.time.monotonic', return_value=901):
+            self.message('Bonjour')
+        self.bot.ai_executor.submit.assert_not_called()
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ai_usage').fetchone()[0], 0)
+
     def test_non_member_cannot_start_assistant(self):
         self.api.call.return_value = {'status': 'left'}
         self.callback('assistant')
