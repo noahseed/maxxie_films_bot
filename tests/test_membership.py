@@ -90,7 +90,7 @@ class MembershipTests(unittest.TestCase):
             for command in ('/start', '/aide', '/help', '/recherche', '/id'):
                 self.assertIn(command, response['text'])
             self.assertNotIn('/film', response['text'])
-            self.assertEqual(response['reply_markup']['inline_keyboard'][2][1],
+            self.assertEqual(response['reply_markup']['inline_keyboard'][2][2],
                              {'text': '❓ Aide', 'callback_data': 'aide'})
 
     def test_random_button_uses_only_channel_films(self):

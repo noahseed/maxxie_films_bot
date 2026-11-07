@@ -12,7 +12,7 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 ## Utilisation
 
 Le menu propose **Rechercher un film** et **Lire les règles** sur la première ligne,
-**Rejoindre le canal** et **Hasard** sur la deuxième, puis **Contact** et **Aide**
+**Rejoindre le canal** et **Hasard** sur la deuxième, puis **Contact**, **Accueil** et **Aide**
 sur la troisième. Le règlement s’affiche en privé avec un retour au menu.
 L’option Catalogue a été retirée ; les anciens boutons de
 catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
@@ -396,3 +396,6 @@ Sans résumé confirmé, il indique « Synopsis indisponible pour ce film. ».
 légende, et conserve les boutons de lecture et de nouveau tirage. Telegram choisit
 la disposition de la photo. Sans jaquette identifiée, le résultat reste textuel.
 La récupération de la jaquette se fait en arrière-plan, sans appel OpenAI.
+
+Le bouton **Accueil**, entre Contact et Aide, affiche le même accueil que `/start`
+et quitte la recherche ou le contact en cours.

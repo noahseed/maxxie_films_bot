@@ -269,7 +269,7 @@ class Bot:
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"},
                        {"text": "🎲 Hasard", "callback_data": "hasard"}],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
-                       HELP_BUTTON]]})
+                       {"text": "🏠 Accueil", "callback_data": "menu"}, HELP_BUTTON]]})
 
     def ask_ai(self, user_id, text):
         if not self.ai:
