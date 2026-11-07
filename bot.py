@@ -580,7 +580,9 @@ class Bot:
         text = f"🎲 Un film au hasard :\n\n🎬 {title}\n\n" + (synopsis or "Synopsis indisponible pour ce film.")
         markup = {"inline_keyboard": [
             [{"text": "🎬 Voir le film", "url": self.film_link(message_id)}],
-            [{"text": "🎲 Un autre film", "callback_data": "hasard"}, HELP_BUTTON]]}
+            [{"text": "🎲 Un autre film", "callback_data": "hasard"}],
+            [{"text": "✉️ Contact", "callback_data": "contact"},
+             {"text": "🏠 Accueil", "callback_data": "menu"}, HELP_BUTTON]]}
         if poster:
             try:
                 with Path(poster['path']).open('rb') as stream:
