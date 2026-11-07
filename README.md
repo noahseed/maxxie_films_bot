@@ -1,13 +1,13 @@
 # Maxxie Films Bot
 
-Catalogue privé pour **@maxxie_films_bot**, en Python 3.11+, sans dépendances externes.
+Catalogue privé pour **@maxxie_films_bot**, en Python 3.11+, avec PostgreSQL et le pilote psycopg.
 Les administrateurs envoient au bot des vidéos ou documents vidéo ; le bot les publie
 automatiquement dans le canal, avec leur nom de fichier sans le suffixe `.mp4`
 (également reconnu en majuscules). Exemple : `Mon Film.mp4` → `Mon Film`.
 Le nom de fichier prime sur une légende existante. Si Telegram ne fournit pas le nom,
 la légende sert de titre ; sans les deux, le bot demande de renvoyer le fichier.
 Les abonnés du canal recherchent les films et ouvrent leur publication dans le canal.
-Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQLite.
+Les fichiers restent chez Telegram ; le VPS conserve leurs références dans PostgreSQL.
 
 ## Utilisation
 
@@ -114,7 +114,7 @@ recherche ni Contact. Les images JPEG (5 Mo maximum) sont conservées dans
 connexions utilisent uniquement les domaines API et images de TMDB, sans suivre
 les redirections. Aucun jeton n’est transmis au serveur d’images.
 
-La file SQLite reprend les téléchargements en attente après un redémarrage. Les
+La file PostgreSQL reprend les téléchargements en attente après un redémarrage. Les
 couvertures appliquées (`covered`) et les modifications au résultat incertain
 (`cover_uncertain`) ne sont pas répétées automatiquement. Les anciennes tâches de
 photos séparées sont reprises pour appliquer une couverture. Un changement de
@@ -153,7 +153,7 @@ ni exécuter des commandes. Le bouton **Aide** efface la mémoire de la discussi
 La mémoire des deux derniers échanges reste uniquement en RAM et expire après
 15 minutes d’inactivité (nettoyage au passage suivant de la boucle). Les requêtes
 utilisent la Responses API avec `store=false`, sans identifiant ni pseudo Telegram.
-Les questions et réponses ne sont pas enregistrées dans SQLite. Les quotas le sont,
+Les questions et réponses ne sont pas enregistrées dans PostgreSQL. Les quotas le sont,
 sans contenu : **20 requêtes par utilisateur et 100 pour le bot par jour UTC**, avec
 600 tokens de sortie maximum et 2 000 caractères par question. Les tentatives en
 erreur consomment aussi une unité de quota. Ce sont des limites d’appels, pas une
@@ -195,7 +195,7 @@ Telegram. Les premières visites d’utilisateurs pas encore abonnés sont aussi
 Les messages du canal ne déclenchent pas de notification. Le destinataire ne reçoit
 pas de notification pour ses propres interactions.
 
-Les identifiants déjà vus sont conservés dans la table SQLite `visitors`, sans
+Les identifiants déjà vus sont conservés dans la table PostgreSQL `visitors`, sans
 stocker les noms ni les pseudos. Les visites suivantes et les redémarrages ne
 produisent pas de nouvelle alerte. Le suivi commence à l’installation de cette
 fonction : une ancienne personne peut donc être signalée lors de son prochain
@@ -279,13 +279,13 @@ Le service musical `maxxie-bot` et le service films sont indépendants :
 | Service et compte système | `maxxie-films-bot` |
 | Code | `/opt/maxxie-films-bot` |
 | Configuration secrète | `/etc/maxxie-films-bot.env` (root, mode 600) |
-| Catalogue | `/var/lib/maxxie-films-bot/catalogue.sqlite3` |
+| Catalogue | `maxxie_films` (PostgreSQL local, rôle `maxxie-films-bot`) |
 
 Depuis votre ordinateur, copier le code :
 
 ```bash
 ssh debian@maxxie432.rondeau-cameira.fr 'mkdir -p ~/maxxie-films-bot/deploy'
-scp bot.py catalogue.py search.py telegram_api.py openai_api.py posters.py backups.py debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/
+scp database.py migrate_postgres.py bot.py catalogue.py search.py telegram_api.py openai_api.py posters.py backups.py debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/
 scp deploy/* debian@maxxie432.rondeau-cameira.fr:~/maxxie-films-bot/deploy/
 ```
 
@@ -307,7 +307,7 @@ une configuration existante et ne démarre ni ne redémarre les services.
 
 Le long polling n’exige aucun port entrant. Un seul processus doit utiliser le
 jeton. Le service se relance après une panne et reprend la réception à son curseur
-SQLite. Les demandes sont marquées avant traitement pour éviter de répéter un
+PostgreSQL. Les demandes sont marquées avant traitement pour éviter de répéter un
 envoi incertain : un arrêt à cet instant peut perdre une demande. L’utilisateur
 peut alors la renouveler. Les erreurs d’envoi ne sont pas rejouées automatiquement.
 
@@ -335,12 +335,12 @@ est éteint à cette heure, systemd exécute la sauvegarde manquée à son retou
 Les **14 dernières archives** sont conservées dans `/var/backups/maxxie-films-bot`
 (dossier root 700, archives 600).
 
-Chaque archive contient une copie cohérente SQLite créée avec l’API de sauvegarde,
-le fichier secret de configuration, le code et les unités systemd. Les références
-des films, visiteurs et sessions Contact sont donc sauvegardées. Les fichiers
-vidéo restent chez Telegram. L’intégrité SQLite et les empreintes SHA-256 des
-fichiers archivés sont vérifiées avant de publier l’archive et de purger les plus
-anciennes. Un échec conserve les précédentes sauvegardes.
+Chaque archive contient un export PostgreSQL cohérent (`pg_dump --format=custom`),
+les configurations secrètes, le code et les unités systemd. Les références des
+films, les synopsis, visiteurs, quotas et sessions Contact sont sauvegardés.
+Les vidéos restent chez Telegram. Le catalogue de l’export (`pg_restore --list`)
+et les empreintes SHA-256 des fichiers archivés sont vérifiés avant publication
+et purge des archives anciennes. Un échec conserve les sauvegardes précédentes.
 
 ```bash
 sudo systemctl start maxxie-films-backup.service
@@ -353,13 +353,43 @@ Ces sauvegardes sont **locales au VPS** : conserver une copie externe dans un
 stockage protégé pour couvrir la perte du serveur. Les archives contiennent le
 jeton Telegram et ne doivent jamais être publiées ni ajoutées à Git.
 
-Pour restaurer, arrêter le bot, extraire une archive choisie dans un dossier privé,
-vérifier ses fichiers avec `manifest.json`, puis restaurer la base via l’API SQLite
-`backup` (source `data/catalogue.sqlite3`, destination de production). Remettre la
-configuration en mode 600 root, le code dans `/opt/maxxie-films-bot`, et la base
-sous le compte `maxxie-films-bot`, mode 600, avant de redémarrer. Les tests valident
-une restauration depuis une base active en mode WAL. Une restauration revient à
-l’état de la sauvegarde choisie, y compris les visiteurs et le curseur Telegram.
+Pour restaurer, arrêter le bot, extraire l’archive dans un dossier privé et vérifier
+`manifest.json`. Restaurer `data/catalogue.dump` avec `pg_restore --no-owner --no-acl`
+dans une base PostgreSQL vide appartenant à `maxxie-films-bot`, puis configurer
+`DATABASE_URL` vers cette base et redémarrer le bot. Exécuter la restauration sous
+le compte système `maxxie-films-bot` pour l’authentification locale. Les configurations
+restent root 600. Une restauration revient à l’état de la sauvegarde, y compris
+les visiteurs, quotas et le curseur Telegram.
+
+## Migration SQLite vers PostgreSQL
+
+Installer `postgresql` et `python3-psycopg`, puis exécuter
+`sudo python3 /opt/maxxie-films-bot/setup_postgres.py`. Le rôle dédié n’est ni
+superutilisateur, ni créateur de bases ou de rôles. L’accès utilise le socket local
+et l’authentification peer, sans nouveau mot de passe ni port public.
+
+Arrêter le bot, effectuer une sauvegarde, puis exécuter sous `maxxie-films-bot` :
+
+```bash
+python3 /opt/maxxie-films-bot/migrate_postgres.py \
+  /var/lib/maxxie-films-bot/catalogue.sqlite3 \
+  'postgresql:///maxxie_films?host=/var/run/postgresql'
+```
+
+Le script exige une destination vide, copie les onze tables dans une transaction,
+compare chaque ligne et recale la séquence des identifiants de films. Ajouter
+`DATABASE_URL=postgresql:///maxxie_films?host=/var/run/postgresql` dans la
+configuration, puis redémarrer. Le fichier SQLite reste conservé comme copie
+antérieure ; il n’est plus mis à jour. SQLite est encore supporté pour les tests
+et l’import des anciennes sauvegardes. Les jaquettes restent dans le répertoire
+de cache existant, indépendant du moteur de base.
+
+Tests PostgreSQL (dans une base réservée aux tests) :
+
+```bash
+TEST_POSTGRES_DSN='postgresql:///maxxie_films_test?host=/var/run/postgresql' \
+  python3 tests/run_postgres.py
+```
 
 ## Vérification locale
 

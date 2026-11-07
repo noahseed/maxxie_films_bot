@@ -1,4 +1,4 @@
-"""Bot Maxxie Films — Python 3.11+, bibliothèque standard."""
+"""Bot Maxxie Films — Python 3.11+, PostgreSQL via psycopg."""
 import logging
 import os
 from pathlib import Path
@@ -668,7 +668,7 @@ def main():
     expected = os.environ["BOT_USERNAME"].lstrip("@").lower()
     path = Path(os.environ.get("DATABASE_PATH", "/var/lib/maxxie-films-bot/catalogue.sqlite3"))
     path.parent.mkdir(parents=True, exist_ok=True)
-    store = Catalogue(path)
+    store = Catalogue(os.environ.get("DATABASE_URL") or path)
     notify_id = os.environ.get("NOTIFY_CHAT_ID", "").strip()
     if not notify_id and len(admins) == 1:
         notify_id = str(next(iter(admins)))

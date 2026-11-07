@@ -38,7 +38,7 @@ def main():
                      f'CHANNEL_ID={channel_id}\n'
                      f"ADMIN_USER_IDS={','.join(map(str, sorted(admins)))}\n"
                      f'NOTIFY_CHAT_ID={notify_id}\n'
-                     'DATABASE_PATH=/var/lib/maxxie-films-bot/catalogue.sqlite3\n')
+                     'DATABASE_URL=postgresql:///maxxie_films?host=/var/run/postgresql\n')
     print('Configuration enregistrée. Démarrage : sudo systemctl enable --now maxxie-films-bot')
 
 

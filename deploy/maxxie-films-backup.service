@@ -3,6 +3,7 @@ Description=Sauvegarde du bot Maxxie Films
 
 [Service]
 Type=oneshot
+EnvironmentFile=-/etc/maxxie-films-bot.env
 ExecStart=/usr/bin/python3 -B /opt/maxxie-films-bot/backups.py
 User=root
 Group=root

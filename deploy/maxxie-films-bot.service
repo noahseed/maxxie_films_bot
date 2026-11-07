@@ -1,6 +1,6 @@
 [Unit]
 Description=Bot Telegram Maxxie Films
-After=network-online.target
+After=network-online.target postgresql.service
 Wants=network-online.target
 StartLimitIntervalSec=300
 StartLimitBurst=5
