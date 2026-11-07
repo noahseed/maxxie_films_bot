@@ -33,7 +33,8 @@ class SynopsisTests(unittest.TestCase):
         args = self.api.call.call_args
         self.assertEqual(args.args[0], 'editMessageCaption')
         self.assertTrue(args.kwargs['caption'].startswith('Matrix 1999\n\nUn programmeur'))
-        self.assertIn('/movie/603', args.kwargs['caption'])
+        self.assertNotIn('TMDB', args.kwargs['caption'])
+        self.assertNotIn('http', args.kwargs['caption'])
         self.assertEqual(self.store.get(self.film)[2], 'Matrix 1999')
         self.assertEqual(self.store.video_message(-100123, 50)['caption'], args.kwargs['caption'])
         self.assertIsNone(self.store.next_synopsis(-100123))
@@ -48,7 +49,7 @@ class SynopsisTests(unittest.TestCase):
     def test_caption_fits_telegram_utf16_limit(self):
         caption = synopsis_caption('🎬' * 100, 'Résumé 😀 ' * 500, 603)
         self.assertLessEqual(len(caption.encode('utf-16-le')) // 2, 1024)
-        self.assertIn('…\n\nSource', caption)
+        self.assertTrue(caption.endswith('…'))
 
     def test_synopsis_does_not_require_a_poster(self):
         client = TMDBPosters('secret', '/tmp/unused')

@@ -30,7 +30,7 @@ RULES = ("📜 Règles de Maxxie Films\n\n"
 
 
 def synopsis_caption(title, overview, movie_id):
-    suffix = f"\n\nSource : TMDB · https://www.themoviedb.org/movie/{movie_id}"
+    suffix = ""
     prefix = title + '\n\n'
     budget = 1024 - len((prefix + suffix).encode('utf-16-le')) // 2
     summary = ' '.join(overview.split())

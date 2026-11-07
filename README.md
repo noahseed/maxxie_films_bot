@@ -373,7 +373,8 @@ Les tests utilisent des réponses simulées et n’envoient aucun message Telegr
 
 Le bot ajoute automatiquement les synopsis français de TMDB sous le titre des
 publications existantes et nouvelles. Il modifie uniquement la légende : les vidéos,
-leurs liens et leurs couvertures restent en place. La source TMDB est indiquée.
+leurs liens et leurs couvertures restent en place. Les légendes affichent uniquement
+le titre et le synopsis, sans mention de source.
 Les résumés longs sont tronqués pour respecter les 1 024 caractères UTF-16 de
 Telegram. Une correspondance ambiguë ou sans résumé français laisse le post intact.
 Le suivi persistant `synopsis_jobs` évite de rééditer les publications déjà traitées ;
