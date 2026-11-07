@@ -173,7 +173,7 @@ class Bot:
             elif data in ("menu", "abonnement"):
                 self.show_menu(chat_id, user_id)
             elif data == "regles":
-                self.send(chat_id, RULES, reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
+                self.show_menu(chat_id, user_id, RULES)
             elif data == "hasard":
                 self.show_random(chat_id)
             elif data == "recherche":
