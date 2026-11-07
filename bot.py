@@ -16,6 +16,11 @@ HELP = ("🎬 Maxxie Films\n\n"
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo pour la publier dans le canal "
               "avec son nom de fichier sans .mp4.")
 MENU_BUTTON = {"text": "🏠 Menu", "callback_data": "menu"}
+RULES = ("📜 Règles de Maxxie Films\n\n"
+         "• Respecte les autres membres et les administrateurs.\n"
+         "• Évite le spam, la publicité et les messages répétitifs.\n"
+         "• Recherche les films par leur titre et ouvre-les dans le canal.\n"
+         "• Pour signaler un problème ou poser une question, utilise le bouton Contact.")
 
 
 def video_media(message):
@@ -129,6 +134,8 @@ class Bot:
                 self.show_menu(chat_id, user_id)
             elif data in ("aide", "menu", "abonnement"):
                 self.show_menu(chat_id, user_id)
+            elif data == "regles":
+                self.send(chat_id, RULES, reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
             elif data == "recherche":
                 self.send(chat_id, "🔎 Envoie un titre, même approximatif. Tu peux préciser "
                           "une année et une langue : par exemple « Matrix 1999 VF ».",
@@ -196,8 +203,9 @@ class Bot:
                   reply_markup={"inline_keyboard": [
                       [{"text": "🔎 Rechercher un film", "callback_data": "recherche"},
                        {"text": "❓ Aide", "callback_data": "aide"}],
-                      [{"text": "✉️ Contact", "callback_data": "contact"},
-                       {"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}]]})
+                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
+                      [{"text": "📜 Lire les règles", "callback_data": "regles"},
+                       {"text": "✉️ Contact", "callback_data": "contact"}]]})
 
     def send_contact(self, chat_id, message):
         # Garder le mode contact pour les messages suivants, y compris un album.
