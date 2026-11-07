@@ -93,6 +93,27 @@ class MembershipTests(unittest.TestCase):
             self.assertEqual(response['reply_markup']['inline_keyboard'][2][1],
                              {'text': '❓ Aide', 'callback_data': 'aide'})
 
+    def test_random_button_uses_only_channel_films(self):
+        other = self.store.add({'file_id': 'other', 'file_unique_id': 'other'}, 'video', 'Autre canal')
+        self.store.link_channel(-100999, other, 99)
+        self.callback('menu')
+        row = self.api.call.call_args.kwargs['reply_markup']['inline_keyboard'][1]
+        self.assertEqual(row[0]['url'], 'https://t.me/maxxie_films')
+        self.assertEqual(row[1]['callback_data'], 'hasard')
+        self.callback('hasard')
+        response = self.api.call.call_args.kwargs
+        self.assertIn('Un film', response['text'])
+        self.assertEqual(response['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
+        self.assertEqual(response['reply_markup']['inline_keyboard'][1][0]['callback_data'], 'hasard')
+
+    def test_random_handles_empty_catalogue_and_requires_membership(self):
+        self.store.remove(1)
+        self.callback('hasard')
+        self.assertIn('Aucun film', self.api.call.call_args.kwargs['text'])
+        self.member = {'status': 'left'}
+        self.callback('hasard')
+        self.assertIn('pour utiliser le bot', self.api.call.call_args.kwargs['text'])
+
     def test_non_admin_cannot_use_administration_buttons(self):
         for action in ('publier:1', 'retirer:1', 'confirmer_retrait:1'):
             self.callback(action)

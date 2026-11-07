@@ -173,6 +173,8 @@ class Bot:
                 self.show_menu(chat_id, user_id)
             elif data == "regles":
                 self.send(chat_id, RULES, reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
+            elif data == "hasard":
+                self.show_random(chat_id)
             elif data == "recherche":
                 self.search_sessions[user_id] = time.monotonic()
                 self.send(chat_id, "🔎 Envoie un titre, même approximatif. Tu peux préciser "
@@ -263,7 +265,8 @@ class Bot:
                   reply_markup={"inline_keyboard": [
                       [{"text": "🔎 Rechercher un film", "callback_data": "recherche"},
                        {"text": "📜 Lire les règles", "callback_data": "regles"}],
-                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
+                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"},
+                       {"text": "🎲 Hasard", "callback_data": "hasard"}],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
                        HELP_BUTTON]]})
 
@@ -542,6 +545,18 @@ class Bot:
         channel = str(self.channel_id)
         return f"https://t.me/c/{channel[4:]}/{message_id}"
 
+    def show_random(self, chat_id):
+        film = self.catalogue.random_channel_film(self.channel_id)
+        if not film:
+            self.send(chat_id, "Aucun film disponible dans le canal pour le moment.",
+                      reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
+            return
+        _, title, message_id = film
+        self.send(chat_id, f"🎲 Un film au hasard :\n\n🎬 {title}",
+                  reply_markup={"inline_keyboard": [
+                      [{"text": "🎬 Voir le film", "url": self.film_link(message_id)}],
+                      [{"text": "🎲 Un autre film", "callback_data": "hasard"}, HELP_BUTTON]]})
+
     def list_films(self, chat_id, query="", page=0):
         if not query.strip():
             self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.",
@@ -588,7 +603,8 @@ class Bot:
             return True
         self.send(chat_id, "🔒 Rejoins le canal Maxxie Films pour utiliser le bot, puis vérifie ton abonnement.",
                   reply_markup={"inline_keyboard": [
-                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
+                      [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"},
+                       {"text": "🎲 Hasard", "callback_data": "hasard"}],
                       [{"text": "✅ J’ai rejoint le canal", "callback_data": "abonnement"}]]})
         return False
 

@@ -85,6 +85,12 @@ class Catalogue:
             WHERE channel_films.channel_id=?""", (channel_id,))
         return ranked_results(rows, query)
 
+    def random_channel_film(self, channel_id):
+        return self.db.execute("""SELECT films.id,films.title,channel_films.message_id
+            FROM films JOIN channel_films ON channel_films.film_id=films.id
+            WHERE channel_films.channel_id=? ORDER BY RANDOM() LIMIT 1""",
+            (channel_id,)).fetchone()
+
     def ai_catalogue(self, channel_id, query='', limit=500):
         rows = self.db.execute("""SELECT films.id,films.title,channel_films.message_id
             FROM films JOIN channel_films ON channel_films.film_id=films.id

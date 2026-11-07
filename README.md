@@ -12,7 +12,7 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 ## Utilisation
 
 Le menu propose **Rechercher un film** et **Lire les règles** sur la première ligne,
-**Rejoindre le canal** seul sur la deuxième, puis **Contact** et **Aide**
+**Rejoindre le canal** et **Hasard** sur la deuxième, puis **Contact** et **Aide**
 sur la troisième. Le règlement s’affiche en privé avec un retour au menu.
 L’option Catalogue a été retirée ; les anciens boutons de
 catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
@@ -385,3 +385,6 @@ Le bouton **Aide**, à droite de Contact, affiche les commandes `/start`, `/aide
 (alias `/help`), `/recherche titre` et `/id`. Les anciennes commandes `/catalogue`,
 `/publier` et `/supprimer` sont signalées comme simples raccourcis vers l’accueil.
 Les boutons Aide et les commandes `/aide` et `/help` quittent le mode en cours.
+
+Le bouton **Hasard** propose un film choisi dans le catalogue du canal, avec un lien
+vers sa publication et un bouton pour en tirer un autre, sans appel OpenAI.
