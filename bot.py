@@ -429,7 +429,12 @@ class Bot:
             except PosterError as error:
                 self.catalogue.poster_status(channel_id, message_id, 'failed')
                 LOG.warning('Récupération de jaquette impossible (code %s).', error.code)
-            except (TelegramError, OSError, ValueError):
+            except TelegramError as error:
+                if sending and error.reason == 'not_modified':
+                    self.catalogue.poster_status(channel_id, message_id, 'covered')
+                else:
+                    LOG.warning('Modification de couverture non confirmée (code %s).', error.code)
+            except (OSError, ValueError):
                 if not sending:
                     self.catalogue.poster_status(channel_id, message_id, 'failed')
                 LOG.warning('Envoi de jaquette non confirmé ; aucun renvoi automatique.')

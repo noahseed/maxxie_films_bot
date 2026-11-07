@@ -106,6 +106,13 @@ class PosterQueueTests(unittest.TestCase):
         self.store.queue_posters(-100123)
         self.assertIsNone(self.store.next_poster(-100123))
 
+    def test_already_applied_cover_is_recognized_as_success(self):
+        self.bot.poll_posters()
+        self.api.edit_video_cover.side_effect = TelegramError(400, reason='not_modified')
+        self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
+        self.bot.poll_posters()
+        self.assertEqual(self.status(), 'covered')
+
     def test_no_match_does_not_send_any_photo(self):
         self.bot.poll_posters()
         self.future.set_result(None)
@@ -168,6 +175,7 @@ class PhotoUploadTests(unittest.TestCase):
         self.assertIn(b'original-video', request.args[2])
         self.assertNotIn(b'name="photo"', request.args[2])
         self.assertNotIn(b'reply_parameters', request.args[2])
+        factory.return_value.sock.settimeout.assert_called_with(30)
 
     @patch('telegram_api.http.client.HTTPSConnection')
     def test_photo_upload_is_multipart_and_preserves_video_reply(self, factory):

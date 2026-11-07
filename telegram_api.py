@@ -14,9 +14,10 @@ READ_METHODS = frozenset({'getMe', 'getChat', 'getChatMember', 'getWebhookInfo',
 
 
 class TelegramError(Exception):
-    def __init__(self, code, retry_after=None):
+    def __init__(self, code, retry_after=None, reason=None):
         self.code = code
         self.retry_after = retry_after
+        self.reason = reason
         super().__init__(f"Telegram : erreur {code}")
 
 
@@ -71,7 +72,8 @@ class Telegram:
             request_body = b''.join(chunks)
             headers = {'Content-Type': 'multipart/form-data; boundary=' + boundary}
         started = time.monotonic()
-        read_timeout = params.get('timeout', 30) + 5 if method == 'getUpdates' else 8
+        read_timeout = (params.get('timeout', 30) + 5 if method == 'getUpdates' else
+                        30 if method in ('editMessageMedia', 'sendPhoto') else 8)
         # Seules les lectures peuvent être retentées. Un envoi incertain
         # ne doit jamais être répété implicitement.
         for attempt in range(2):
@@ -107,8 +109,9 @@ class Telegram:
                 self.close()
                 raise TelegramError(0)
             if not result.get('ok'):
+                reason = 'not_modified' if 'message is not modified' in str(result.get('description', '')).lower() else None
                 raise TelegramError(result.get('error_code', status),
-                                    result.get('parameters', {}).get('retry_after'))
+                                    result.get('parameters', {}).get('retry_after'), reason)
             if 'result' not in result:
                 self.close()
                 raise TelegramError(0)
