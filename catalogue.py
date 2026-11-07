@@ -80,6 +80,21 @@ class Catalogue:
             WHERE channel_films.channel_id=?""", (channel_id,))
         return ranked_results(rows, query)
 
+    def ai_catalogue(self, channel_id, query='', limit=500):
+        rows = self.db.execute("""SELECT films.id,films.title,channel_films.message_id
+            FROM films JOIN channel_films ON channel_films.film_id=films.id
+            WHERE channel_films.channel_id=? ORDER BY films.id DESC LIMIT ?""",
+            (channel_id, limit + 1)).fetchall()
+        partial = len(rows) > limit
+        if partial:
+            selected = {}
+            for row in self.search_channel(channel_id, query) + rows:
+                selected.setdefault(row[0], row)
+                if len(selected) == limit:
+                    break
+            rows = list(selected.values())
+        return rows, partial
+
     def remove(self, film_id):
         with self.db:
             self.db.execute("DELETE FROM channel_films WHERE film_id=?", (film_id,))

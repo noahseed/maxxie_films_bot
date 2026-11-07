@@ -5,6 +5,7 @@ from pathlib import Path
 import signal
 import threading
 import time
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 from catalogue import Catalogue
@@ -259,30 +260,40 @@ class Bot:
             self.send(user_id, "La limite quotidienne de l’assistant IA est atteinte. Réessaie demain.")
             return
         session['time'] = time.monotonic()
-        future = self.ai_executor.submit(self.ai.answer, text, list(session['history']))
-        self.ai_jobs[user_id] = (future, text, session)
+        rows, partial = self.catalogue.ai_catalogue(self.channel_id, text)
+        snapshot = {film_id: (title, message_id) for film_id, title, message_id in rows}
+        context = [{'id': film_id, 'title': title} for film_id, title, _ in rows]
+        future = self.ai_executor.submit(self.ai.answer, text, list(session['history']), context, partial)
+        self.ai_jobs[user_id] = (future, text, session, snapshot)
         self.send(user_id, "🤖 Je prépare ta réponse…", reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
 
     def poll_ai(self):
         self.ai_sessions = {uid: session for uid, session in self.ai_sessions.items()
                             if time.monotonic() - session['time'] < 900}
-        for user_id, (future, question, session) in list(self.ai_jobs.items()):
+        for user_id, (future, question, session, snapshot) in list(self.ai_jobs.items()):
             if not future.done():
                 continue
             del self.ai_jobs[user_id]
             if self.ai_sessions.get(user_id) is not session:
                 continue
             try:
-                answer, titles = future.result()
+                answer, film_ids = future.result()
                 if not self.check_membership(user_id):
                     self.ai_sessions.pop(user_id, None)
                     continue
                 links, seen = [], set()
-                for title in titles:
-                    for film_id, found_title, message_id in self.catalogue.search_channel(self.channel_id, title)[:1]:
-                        if film_id not in seen:
-                            seen.add(film_id)
-                            links.append([{'text': f'🎬 {found_title}'[:64], 'url': self.film_link(message_id)}])
+                for film_id in film_ids[:5]:
+                    if type(film_id) is not int or film_id not in snapshot or film_id in seen:
+                        continue
+                    _, message_id = snapshot[film_id]
+                    film = self.catalogue.get(film_id)
+                    if not film or self.catalogue.channel_message(self.channel_id, film_id) != message_id:
+                        continue
+                    seen.add(film_id)
+                    links.append([{'text': f'🎬 {film[2]}'[:64], 'url': self.film_link(message_id)}])
+                answer = re.sub(r'(?i)(?:https?://|tg://|www\.|t\.me/)\S+', '', answer).strip()
+                if not answer:
+                    answer = 'Voici les films disponibles :' if links else 'Aucun lien de film confirmé pour cette réponse.'
                 if links:
                     answer += '\n\nFilms trouvés dans le canal :'
                 session['history'] = (session['history'] + [{'role': 'user', 'content': question},

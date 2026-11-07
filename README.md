@@ -138,11 +138,15 @@ les règles, Contact et la gestion des jaquettes ne déclenchent aucun appel Ope
 Une navigation vers le menu ou un autre bouton, une commande ou l’expiration de
 la session désactive l’IA pour les prochains messages. Une requête déjà transmise
 à OpenAI avant cette désactivation peut toutefois être déjà facturée.
- Les messages
-saisis dans ce mode sont envoyés à OpenAI ; les conversations Contact, la recherche
-classique et les vidéos ne le sont pas. L’IA propose des titres, puis le bot ajoute
-uniquement des liens vérifiés vers les publications de son canal. Une suggestion
-ne garantit pas la présence du film. L’IA ne peut ni publier, ni retirer un film,
+Les messages saisis dans ce mode ainsi que les titres et identifiants internes du
+catalogue du canal sont envoyés à OpenAI ; les conversations Contact, la recherche
+classique, les vidéos et leurs identifiants Telegram ne le sont pas. L’IA sélectionne
+jusqu’à cinq films du catalogue ; le bot vérifie leur présence et ajoute des boutons
+ouvrant leurs publications dans le canal. Les liens sont construits par le bot.
+Le contexte contient au plus 500 titres ; au-delà, il privilégie les correspondances
+avec la question et les ajouts récents, et signale cette sélection partielle à l’IA.
+L’IA peut aussi discuter de films hors catalogue sans proposer de lien pour eux.
+L’IA ne peut ni publier, ni retirer un film,
 ni exécuter des commandes. Le bouton **Menu** termine la discussion.
 
 La mémoire des deux derniers échanges reste uniquement en RAM et expire après

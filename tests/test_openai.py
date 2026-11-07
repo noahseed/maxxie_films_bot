@@ -15,15 +15,18 @@ class OpenAIClientTests(unittest.TestCase):
         response.status = 200
         response.read.return_value = json.dumps({'status': 'completed', 'output': [
             {'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps(
-                {'answer': 'Essaie Matrix.', 'titles': ['Matrix']})}]}]}).encode()
-        answer, titles = CinemaAI('test-secret').answer('Un film de science-fiction ?')
-        self.assertEqual((answer, titles), ('Essaie Matrix.', ['Matrix']))
+                {'answer': 'Essaie Matrix.', 'film_ids': [1, 999]})}]}]}).encode()
+        answer, titles = CinemaAI('test-secret').answer('Un film de science-fiction ?', catalogue=[{'id': 1, 'title': 'Matrix'}])
+        self.assertEqual((answer, titles), ('Essaie Matrix.', [1]))
         args = factory.return_value.request.call_args
         self.assertEqual(args.args[:2], ('POST', '/v1/responses'))
         payload = json.loads(args.args[2])
         self.assertFalse(payload['store'])
         self.assertEqual(payload['max_output_tokens'], 600)
         self.assertEqual(payload['text']['format']['type'], 'json_schema')
+        self.assertEqual(payload['text']['format']['schema']['properties']['film_ids']['items']['type'], 'integer')
+        self.assertIn('Matrix', payload['input'][0]['content'])
+        self.assertNotIn('file_id', payload['input'][0]['content'])
         self.assertNotIn('tools', payload)
         factory.return_value.close.assert_called_once()
 
@@ -75,7 +78,7 @@ class AssistantTests(unittest.TestCase):
         self.message('Un film de science-fiction ?')
         self.assertFalse(self.future.done())
         self.assertIn('prépare', self.api.call.call_args.kwargs['text'])
-        self.future.set_result(('Essaie Matrix.', ['Matrix', 'Un titre inexistant']))
+        self.future.set_result(('Essaie Matrix.', [film_id, 999999]))
         self.bot.poll_ai()
         response = self.api.call.call_args.kwargs
         self.assertEqual(response['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
@@ -89,6 +92,49 @@ class AssistantTests(unittest.TestCase):
         self.future.set_result(('Réponse tardive', []))
         self.bot.poll_ai()
         self.api.call.assert_not_called()
+
+    def test_ai_receives_only_the_current_channels_indexed_catalogue(self):
+        first = self.store.add({'file_id': 'secret-file', 'file_unique_id': 'a'}, 'video', 'Alien 1979')
+        second = self.store.add({'file_id': 'other-file', 'file_unique_id': 'b'}, 'video', 'Autre canal')
+        self.store.add({'file_id': 'private-file', 'file_unique_id': 'c'}, 'video', 'Non publié')
+        self.store.link_channel(-100123, first, 50)
+        self.store.link_channel(-100999, second, 60)
+        self.callback('assistant')
+        self.message('Que me conseilles-tu ?')
+        args = self.bot.ai_executor.submit.call_args.args
+        self.assertEqual(args[3], [{'id': first, 'title': 'Alien 1979'}])
+        self.assertFalse(args[4])
+        self.assertNotIn('secret-file', str(args))
+        self.assertNotIn('Autre canal', str(args))
+
+    def test_removed_film_does_not_get_a_link_and_model_urls_are_removed(self):
+        film_id = self.store.add({'file_id': 'f', 'file_unique_id': 'f'}, 'video', 'Matrix')
+        self.store.link_channel(-100123, film_id, 50)
+        self.callback('assistant')
+        self.message('Matrix ?')
+        self.store.remove(film_id)
+        self.future.set_result(('Voir Matrix https://t.me/invente/999', [film_id, 999]))
+        self.bot.poll_ai()
+        response = self.api.call.call_args.kwargs
+        self.assertNotIn('https://', response['text'])
+        self.assertEqual(response['reply_markup']['inline_keyboard'], [[{'text': '🏠 Menu', 'callback_data': 'menu'}]])
+
+    def test_catalogue_context_has_a_bound_and_marks_partial_catalogues(self):
+        for number, title in enumerate(('Ancien Matrix', 'Nouveau Alien', 'Nouveau film'), 1):
+            film_id = self.store.add({'file_id': str(number), 'file_unique_id': str(number)}, 'video', title)
+            self.store.link_channel(-100123, film_id, number * 10)
+        rows, partial = self.store.ai_catalogue(-100123, 'Matrix', limit=2)
+        self.assertTrue(partial)
+        self.assertEqual(len(rows), 2)
+        self.assertIn('Ancien Matrix', [row[1] for row in rows])
+
+    def test_empty_catalogue_is_sent_as_empty_without_made_up_links(self):
+        self.callback('assistant')
+        self.message('Parlons de cinéma')
+        self.assertEqual(self.bot.ai_executor.submit.call_args.args[3], [])
+        self.future.set_result(('Parlons de cinéma.', [999]))
+        self.bot.poll_ai()
+        self.assertEqual(len(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']), 1)
 
     def test_contact_and_ordinary_search_never_call_openai(self):
         self.message('Matrix')
