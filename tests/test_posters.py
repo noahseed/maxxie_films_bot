@@ -70,6 +70,7 @@ class PosterQueueTests(unittest.TestCase):
         self.store = Catalogue(':memory:')
         self.provider = Mock()
         self.bot = Bot(self.api, self.store, {1}, {2}, -100123, posters=self.provider)
+        self.bot.poll_synopses = Mock()
         self.bot.poster_executor.shutdown()
         self.future = Future()
         self.bot.poster_executor = Mock()

@@ -29,6 +29,11 @@ class Catalogue:
                 channel_id INTEGER NOT NULL, message_id INTEGER NOT NULL, film_id INTEGER NOT NULL,
                 title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued',
                 PRIMARY KEY(channel_id,message_id));
+            CREATE TABLE IF NOT EXISTS synopsis_jobs (
+                channel_id INTEGER NOT NULL, message_id INTEGER NOT NULL,
+                film_id INTEGER NOT NULL, title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queued', caption TEXT,
+                PRIMARY KEY(channel_id,message_id));
             CREATE TABLE IF NOT EXISTS video_messages (
                 channel_id INTEGER NOT NULL, message_id INTEGER NOT NULL, media TEXT NOT NULL,
                 PRIMARY KEY(channel_id,message_id));
@@ -239,3 +244,29 @@ class Catalogue:
         row = self.db.execute('SELECT media FROM video_messages WHERE channel_id=? AND message_id=?',
                               (channel_id, message_id)).fetchone()
         return json.loads(row[0]) if row else None
+
+    def queue_synopses(self, channel_id):
+        with self.db:
+            self.db.execute("""INSERT INTO synopsis_jobs(channel_id,message_id,film_id,title)
+                SELECT channel_id,message_id,films.id,films.title FROM channel_films
+                JOIN films ON films.id=channel_films.film_id WHERE channel_id=?
+                ON CONFLICT(channel_id,message_id) DO UPDATE SET film_id=excluded.film_id,
+                    title=excluded.title,status='queued',caption=NULL
+                WHERE synopsis_jobs.film_id<>excluded.film_id OR synopsis_jobs.title<>excluded.title""", (channel_id,))
+
+    def next_synopsis(self, channel_id):
+        self.queue_synopses(channel_id)
+        return self.db.execute("""SELECT message_id,film_id,title FROM synopsis_jobs
+            WHERE channel_id=? AND status='queued' ORDER BY message_id LIMIT 1""", (channel_id,)).fetchone()
+
+    def synopsis_status(self, channel_id, message_id, status, caption=None):
+        with self.db:
+            self.db.execute('UPDATE synopsis_jobs SET status=?,caption=coalesce(?,caption) WHERE channel_id=? AND message_id=?',
+                            (status,caption,channel_id,message_id))
+            if status == 'done' and caption:
+                media = self.video_message(channel_id, message_id)
+                if media:
+                    media['caption'] = caption
+                    media.pop('caption_entities', None)
+                    self.db.execute('UPDATE video_messages SET media=? WHERE channel_id=? AND message_id=?',
+                                    (json.dumps(media), channel_id, message_id))

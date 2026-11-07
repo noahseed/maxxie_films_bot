@@ -31,7 +31,7 @@ def movie_query(title):
     return cleaned.strip(' -[()]'), year
 
 
-def select_movie(results, query, year):
+def select_movie(results, query, year, require_poster=True):
     expected = ' '.join(words(query))
     candidates = []
     for film in results:
@@ -39,7 +39,7 @@ def select_movie(results, query, year):
             continue
         if year and str(film.get('release_date', ''))[:4] != year:
             continue
-        if not re.fullmatch(r'/[A-Za-z0-9_-]+\.jpg', film.get('poster_path') or ''):
+        if require_poster and not re.fullmatch(r'/[A-Za-z0-9_-]+\.jpg', film.get('poster_path') or ''):
             continue
         score = max((SequenceMatcher(None, expected, ' '.join(words(film.get(key) or '')),
                                      autojunk=False).ratio() for key in ('title', 'original_title')), default=0)
@@ -82,7 +82,7 @@ class TMDBPosters:
         finally:
             connection.close()
 
-    def download(self, title):
+    def lookup(self, title, require_poster=False):
         query, year = movie_query(title)
         if not query:
             return None
@@ -91,11 +91,22 @@ class TMDBPosters:
             params['primary_release_year'] = year
         try:
             result = json.loads(self._get('api.themoviedb.org', '/3/search/movie?' + urlencode(params)))
-            movie = select_movie(result.get('results', []), query, year)
+            movie = select_movie(result.get('results', []), query, year, require_poster)
         except (ValueError, AttributeError, TypeError):
             raise PosterError() from None
+        return movie
+
+    def synopsis(self, title):
+        movie = self.lookup(title)
+        if not movie or not isinstance(movie.get('overview'), str) or not movie['overview'].strip():
+            return None
+        return {'id': movie['id'], 'overview': movie['overview'].strip()}
+
+    def download(self, title):
+        movie = self.lookup(title, require_poster=True)
         if not movie:
             return None
+        query, _ = movie_query(title)
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         image_path = movie['poster_path']
         digest = hashlib.sha256(image_path.encode()).hexdigest()[:16]

@@ -368,3 +368,14 @@ python3 -m unittest discover -s tests -v
 ```
 
 Les tests utilisent des réponses simulées et n’envoient aucun message Telegram.
+
+## Synopsis sous les titres
+
+Le bot ajoute automatiquement les synopsis français de TMDB sous le titre des
+publications existantes et nouvelles. Il modifie uniquement la légende : les vidéos,
+leurs liens et leurs couvertures restent en place. La source TMDB est indiquée.
+Les résumés longs sont tronqués pour respecter les 1 024 caractères UTF-16 de
+Telegram. Une correspondance ambiguë ou sans résumé français laisse le post intact.
+Le suivi persistant `synopsis_jobs` évite de rééditer les publications déjà traitées ;
+les limitations Telegram suspendent les modifications pendant le délai demandé.
+Aucun appel OpenAI n’est utilisé pour les synopsis.

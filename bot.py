@@ -29,6 +29,16 @@ RULES = ("📜 Règles de Maxxie Films\n\n"
          "• Pour signaler un problème ou poser une question, utilise le bouton Contact.")
 
 
+def synopsis_caption(title, overview, movie_id):
+    suffix = f"\n\nSource : TMDB · https://www.themoviedb.org/movie/{movie_id}"
+    prefix = title + '\n\n'
+    budget = 1024 - len((prefix + suffix).encode('utf-16-le')) // 2
+    summary = ' '.join(overview.split())
+    if len(summary.encode('utf-16-le')) // 2 > budget:
+        summary = summary.encode('utf-16-le')[:max(0, budget - 1) * 2].decode('utf-16-le', errors='ignore').rstrip() + '…'
+    return prefix + summary + suffix
+
+
 def video_media(message):
     if message.get("video"):
         return message["video"], "video"
@@ -78,6 +88,8 @@ class Bot:
         self.ai_executor = ThreadPoolExecutor(max_workers=2) if ai else None
         self.posters = posters
         self.poster_executor = ThreadPoolExecutor(max_workers=1) if posters else None
+        self.synopsis_job = None
+        self.synopsis_pause_until = 0
         self.poster_job = None
         self.poster_pause_until = 0
 
@@ -90,7 +102,8 @@ class Bot:
             if post.get("chat", {}).get("type") == "channel" and post["chat"]["id"] == self.channel_id:
                 media, kind = video_media(post)
                 if media:
-                    title = post.get("caption", "").strip() or media.get("file_name") or f"Film {post['message_id']}"
+                    title = (post.get("caption", "").strip().split('\n', 1)[0] or
+                             media.get("file_name") or f"Film {post['message_id']}")
                     film_id = self.catalogue.add(media, kind, title)
                     self.catalogue.link_channel(self.channel_id, film_id, post["message_id"])
                     self.catalogue.remember_video(self.channel_id, post)
@@ -405,6 +418,7 @@ class Bot:
         self.send(chat_id, "Film publié dans le canal.")
 
     def poll_posters(self):
+        self.poll_synopses()
         if not self.posters:
             return
         if time.monotonic() < self.poster_pause_until:
@@ -458,6 +472,48 @@ class Bot:
             message_id, film_id, title = row
             self.poster_job = (self.poster_executor.submit(self.posters.download, title),
                                self.channel_id, message_id, film_id, title)
+
+    def poll_synopses(self):
+        if not self.posters or time.monotonic() < self.synopsis_pause_until:
+            return
+        if self.synopsis_job:
+            future, channel_id, message_id, film_id, title = self.synopsis_job
+            if not future.done():
+                return
+            self.synopsis_job = None
+            try:
+                result = future.result()
+                if self.catalogue.channel_message(channel_id, film_id) != message_id:
+                    self.catalogue.synopsis_status(channel_id, message_id, 'stale')
+                elif not result:
+                    self.catalogue.synopsis_status(channel_id, message_id, 'not_found')
+                else:
+                    caption = synopsis_caption(title, result['overview'], result['id'])
+                    self.catalogue.synopsis_status(channel_id, message_id, 'editing', caption)
+                    try:
+                        self.api.call('editMessageCaption', chat_id=channel_id,
+                                      message_id=message_id, caption=caption)
+                    except TelegramError as error:
+                        if error.reason != 'not_modified':
+                            raise
+                    self.catalogue.synopsis_status(channel_id, message_id, 'done', caption)
+            except TelegramError as error:
+                if error.code == 429:
+                    self.catalogue.synopsis_status(channel_id, message_id, 'queued')
+                    self.synopsis_pause_until = time.monotonic() + max(error.retry_after or 5, 1)
+                else:
+                    self.catalogue.synopsis_status(channel_id, message_id, 'failed')
+                LOG.warning('Modification de synopsis différée ou impossible (code %s).', error.code)
+            except (PosterError, OSError, ValueError) as error:
+                self.catalogue.synopsis_status(channel_id, message_id, 'failed')
+                LOG.warning('Synopsis indisponible (code %s).', getattr(error, 'code', 0))
+        if time.monotonic() < self.synopsis_pause_until:
+            return
+        row = self.catalogue.next_synopsis(self.channel_id)
+        if row:
+            message_id, film_id, title = row
+            self.synopsis_job = (self.poster_executor.submit(self.posters.synopsis, title),
+                                 self.channel_id, message_id, film_id, title)
 
     def show_duplicate(self, chat_id, film_id, title, message_id):
         url = self.film_link(message_id)
@@ -576,7 +632,7 @@ def main():
                 LOG.info("Bot vérifié ; réception des messages.")
             bot.poll_ai()
             bot.poll_posters()
-            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs or bot.poster_job else 30,
+            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs or bot.poster_job or bot.synopsis_job else 30,
                                allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"])
             for update in updates:
                 if stop.is_set():
