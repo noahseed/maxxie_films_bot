@@ -75,9 +75,11 @@ class AssistantTests(unittest.TestCase):
         film_id = self.store.add({'file_id': 'f', 'file_unique_id': 'f'}, 'video', 'Matrix 1999 VF')
         self.store.link_channel(-100123, film_id, 50)
         self.callback('assistant')
+        self.api.reset_mock()
         self.message('Un film de science-fiction ?')
         self.assertFalse(self.future.done())
-        self.assertIn('prépare', self.api.call.call_args.kwargs['text'])
+        self.assertFalse(any(call.args[0] in ('sendMessage', 'sendChatAction')
+                             for call in self.api.call.call_args_list))
         self.future.set_result(('Essaie Matrix.', [film_id, 999999]))
         self.bot.poll_ai()
         response = self.api.call.call_args.kwargs

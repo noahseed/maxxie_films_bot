@@ -265,7 +265,6 @@ class Bot:
         context = [{'id': film_id, 'title': title} for film_id, title, _ in rows]
         future = self.ai_executor.submit(self.ai.answer, text, list(session['history']), context, partial)
         self.ai_jobs[user_id] = (future, text, session, snapshot)
-        self.send(user_id, "🤖 Je prépare ta réponse…", reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
 
     def poll_ai(self):
         self.ai_sessions = {uid: session for uid, session in self.ai_sessions.items()
