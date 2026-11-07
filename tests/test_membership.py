@@ -79,6 +79,20 @@ class MembershipTests(unittest.TestCase):
             'from': {'id': 2}, 'text': 'Un film'}})
         self.assertEqual(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
 
+    def test_help_button_and_slash_aliases_list_available_commands(self):
+        for action in ('aide', '/aide', '/help'):
+            if action.startswith('/'):
+                self.bot.handle({'message': {'chat': {'id': 2, 'type': 'private'},
+                    'from': {'id': 2}, 'text': action}})
+            else:
+                self.callback(action)
+            response = self.api.call.call_args.kwargs
+            for command in ('/start', '/aide', '/help', '/recherche', '/id'):
+                self.assertIn(command, response['text'])
+            self.assertNotIn('/film', response['text'])
+            self.assertEqual(response['reply_markup']['inline_keyboard'][2][1],
+                             {'text': '❓ Aide', 'callback_data': 'aide'})
+
     def test_non_admin_cannot_use_administration_buttons(self):
         for action in ('publier:1', 'retirer:1', 'confirmer_retrait:1'):
             self.callback(action)

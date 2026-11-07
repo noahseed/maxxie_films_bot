@@ -119,7 +119,7 @@ class AssistantTests(unittest.TestCase):
         self.bot.poll_ai()
         response = self.api.call.call_args.kwargs
         self.assertNotIn('https://', response['text'])
-        self.assertEqual(response['reply_markup']['inline_keyboard'], [[{'text': '🏠 Menu', 'callback_data': 'menu'}]])
+        self.assertEqual(response['reply_markup']['inline_keyboard'], [[{'text': '❓ Aide', 'callback_data': 'aide'}]])
 
     def test_catalogue_context_has_a_bound_and_marks_partial_catalogues(self):
         for number, title in enumerate(('Ancien Matrix', 'Nouveau Alien', 'Nouveau film'), 1):

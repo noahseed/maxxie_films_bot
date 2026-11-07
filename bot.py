@@ -21,7 +21,7 @@ HELP = ("🎬 Maxxie Films\n\n"
         "Les résultats ouvrent les films directement dans le canal. Bonne séance !")
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo pour la publier dans le canal "
               "avec son nom de fichier sans .mp4.")
-MENU_BUTTON = {"text": "🏠 Menu", "callback_data": "menu"}
+HELP_BUTTON = {"text": "❓ Aide", "callback_data": "aide"}
 RULES = ("📜 Règles de Maxxie Films\n\n"
          "• Respecte les autres membres et les administrateurs.\n"
          "• Évite le spam, la publicité et les messages répétitifs.\n"
@@ -153,9 +153,9 @@ class Bot:
                     self.send(chat_id, "Cette réponse n’est pas disponible ou a expiré.")
                     return
                 self.send(chat_id, f"💬 Ta réponse sera transmise à l’utilisateur {target}. "
-                          "Envoie ton texte ou une pièce jointe. Reviens au menu pour terminer "
+                          "Envoie ton texte ou une pièce jointe. Appuie sur Aide pour terminer "
                           "(session valable 15 minutes).",
-                          reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                          reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             elif data == "contact":
                 if not self.notify_chat_id:
                     self.send(chat_id, "Le contact est momentanément indisponible.")
@@ -163,19 +163,21 @@ class Bot:
                 self.catalogue.request_contact(user_id)
                 self.send(chat_id, "✉️ Envoie ton message : il sera transmis en privé à l’administrateur. "
                           "Tu peux aussi joindre une photo, une vidéo ou un fichier. "
-                          "Reviens au menu pour terminer (expiration après 15 minutes d’inactivité).",
+                          "Appuie sur Aide pour terminer (expiration après 15 minutes d’inactivité).",
                           reply_markup={"inline_keyboard": [[{"text": "Annuler", "callback_data": "menu"}]]})
             elif data == "catalogue":
                 self.show_menu(chat_id, user_id)
-            elif data in ("aide", "menu", "abonnement"):
+            elif data == "aide":
+                self.show_help(chat_id, user_id)
+            elif data in ("menu", "abonnement"):
                 self.show_menu(chat_id, user_id)
             elif data == "regles":
-                self.send(chat_id, RULES, reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                self.send(chat_id, RULES, reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             elif data == "recherche":
                 self.search_sessions[user_id] = time.monotonic()
                 self.send(chat_id, "🔎 Envoie un titre, même approximatif. Tu peux préciser "
                           "une année et une langue : par exemple « Matrix 1999 VF ».",
-                          reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                          reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             elif data.startswith("rejoindre:"):
                 self.deliver(chat_id, data.split(":", 1)[1])
             elif data.startswith(("publier:", "retirer:", "confirmer_retrait:")):
@@ -221,7 +223,9 @@ class Bot:
                 self.publish(chat_id, str(film_id))
             else:
                 self.send(chat_id, f"Film enregistré : {title}\nNuméro : {film_id}")
-        elif command in ("/start", "/aide", "/help"):
+        elif command in ("/aide", "/help"):
+            self.show_help(chat_id, user_id)
+        elif command == "/start":
             self.show_menu(chat_id, user_id)
         elif command == "/catalogue":
             self.show_menu(chat_id, user_id)
@@ -229,6 +233,7 @@ class Bot:
             if argument.strip():
                 self.list_films(chat_id, argument.strip()[:200])
             else:
+                self.search_sessions[user_id] = time.monotonic()
                 self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.")
         elif command in ("/publier", "/supprimer"):
             self.show_menu(chat_id, user_id)
@@ -242,14 +247,25 @@ class Bot:
             else:
                 self.list_films(chat_id, text[:200])
 
-    def show_menu(self, chat_id, user_id):
-        self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
+    def show_help(self, chat_id, user_id):
+        self.show_menu(chat_id, user_id, "❓ Aide — commandes disponibles\n\n"
+            "/start — Afficher l’accueil.\n"
+            "/aide ou /help — Afficher cette aide.\n"
+            "/recherche titre — Rechercher un film dans le canal sans IA.\n"
+            "/recherche — Saisir ensuite le titre à rechercher.\n"
+            "/id — Afficher ton identifiant Telegram.\n\n"
+            "Écris directement pour discuter avec l’IA cinéma. Le bouton Contact "
+            "transmet tes messages à l’administrateur. Aide quitte la recherche ou le contact.\n\n"
+            "Anciennes commandes : /catalogue, /publier et /supprimer ouvrent uniquement l’accueil.")
+
+    def show_menu(self, chat_id, user_id, text=None):
+        self.send(chat_id, text or HELP + (ADMIN_HELP if user_id in self.admins else ""),
                   reply_markup={"inline_keyboard": [
                       [{"text": "🔎 Rechercher un film", "callback_data": "recherche"},
                        {"text": "📜 Lire les règles", "callback_data": "regles"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
-                       MENU_BUTTON]]})
+                       HELP_BUTTON]]})
 
     def ask_ai(self, user_id, text):
         if not self.ai:
@@ -306,11 +322,11 @@ class Bot:
                     answer += '\n\nFilms trouvés dans le canal :'
                 session['history'] = (session['history'] + [{'role': 'user', 'content': question},
                     {'role': 'assistant', 'content': answer[:2000]}])[-4:]
-                self.send(user_id, answer, reply_markup={'inline_keyboard': links + [[MENU_BUTTON]]})
+                self.send(user_id, answer, reply_markup={'inline_keyboard': links + [[HELP_BUTTON]]})
             except OpenAIError as error:
                 LOG.warning('Assistant OpenAI indisponible (code %s).', error.code)
                 self.send(user_id, "L’assistant IA est momentanément indisponible. Réessaie plus tard.",
-                          reply_markup={'inline_keyboard': [[MENU_BUTTON]]})
+                          reply_markup={'inline_keyboard': [[HELP_BUTTON]]})
             except TelegramError as error:
                 LOG.warning('Réponse IA non confirmée (code %s).', error.code)
 
@@ -336,11 +352,11 @@ class Bot:
             LOG.warning("Message de contact non confirmé (code %s).", error.code)
             self.send(chat_id, "La transmission de ton message n’a pas pu être confirmée. "
                       "Tu peux réessayer avec le bouton Contact.",
-                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                      reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             return
         self.send(chat_id, "✅ Ton message a été transmis à l’administrateur. "
-                  "Tu peux écrire un autre message ou revenir au menu.",
-                  reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                  "Tu peux écrire un autre message ou ouvrir l’aide.",
+                  reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
 
     def send_reply(self, owner_id, message):
         target = self.catalogue.reply_target(owner_id)
@@ -360,10 +376,10 @@ class Bot:
         except TelegramError as error:
             LOG.warning("Réponse de contact non confirmée (code %s).", error.code)
             self.send(owner_id, "La transmission de ta réponse n’a pas pu être confirmée.",
-                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                      reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             return
-        self.send(owner_id, "✅ Réponse transmise. Tu peux continuer ou revenir au menu.",
-                  reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+        self.send(owner_id, "✅ Réponse transmise. Tu peux continuer ou ouvrir l’aide.",
+                  reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
 
     def notify_new_visitor(self, user):
         user_id = user["id"]
@@ -529,16 +545,16 @@ class Bot:
     def list_films(self, chat_id, query="", page=0):
         if not query.strip():
             self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.",
-                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                      reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             return
         rows = self.catalogue.search_channel(self.channel_id, query)
         if not rows:
             self.send(chat_id, "Aucun film trouvé dans le canal.",
-                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                      reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             return
         keyboard = [[{"text": f"🎬 {title}"[:64], "url": self.film_link(message_id)}]
                     for _, title, message_id in rows[:10]]
-        keyboard.append([MENU_BUTTON])
+        keyboard.append([HELP_BUTTON])
         text = "🎬 Titres trouvés ou proches de ta recherche — ouvre le film dans le canal :"
         if len(rows) > 10:
             text += "\nPlus de 10 résultats : précise ta recherche."
@@ -555,7 +571,7 @@ class Bot:
             self.send(chat_id, "Ce film n’est pas disponible dans le canal.")
             return
         self.send(chat_id, f"🎬 {film[2]}", reply_markup={"inline_keyboard": [[
-            {"text": "🎬 Voir le film dans le canal", "url": self.film_link(message_id)}], [MENU_BUTTON]]})
+            {"text": "🎬 Voir le film dans le canal", "url": self.film_link(message_id)}], [HELP_BUTTON]]})
 
     def check_membership(self, chat_id):
         try:

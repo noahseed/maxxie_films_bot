@@ -12,7 +12,7 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 ## Utilisation
 
 Le menu propose **Rechercher un film** et **Lire les règles** sur la première ligne,
-**Rejoindre le canal** seul sur la deuxième, puis **Contact** et **Menu**
+**Rejoindre le canal** seul sur la deuxième, puis **Contact** et **Aide**
 sur la troisième. Le règlement s’affiche en privé avec un retour au menu.
 L’option Catalogue a été retirée ; les anciens boutons de
 catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
@@ -49,7 +49,7 @@ Le bot transmet au compte `NOTIFY_CHAT_ID` un en-tête avec le nom, le pseudo
 Les types de messages non copiables par Telegram peuvent échouer ; le bot indique
 alors que la transmission n’est pas confirmée, sans nouvel essai automatique.
 
-Les messages suivants restent en mode contact jusqu’à un retour au **Menu**, une
+Les messages suivants restent en mode contact jusqu’à un retour au **Aide**, une
 autre action de navigation, une commande ou 15 minutes d’inactivité. Ce mode est
 conservé après redémarrage dans SQLite (identifiant et expiration uniquement).
 Le texte et les fichiers ne sont pas stockés sur le VPS. Les vidéos envoyées par
@@ -60,7 +60,7 @@ message.
 Chaque notification Contact comporte un bouton **Répondre**, réservé au compte
 `NOTIFY_CHAT_ID`. Clique dessus puis envoie ta réponse (texte ou pièce jointe) :
 le bot la transmet au destinataire et confirme l’envoi. Les messages suivants
-restent dans cette conversation jusqu’au **Menu**, une autre action ou l’expiration
+restent dans cette conversation jusqu’au **Aide**, une autre action ou l’expiration
 de la session de 15 minutes. Les vidéos envoyées dans ce mode ne sont pas publiées
 dans le canal. Le destinataire doit toujours être abonné au canal.
 
@@ -135,7 +135,7 @@ L’assistant cinéma répond par défaut aux messages texte libres, sans bouton
 d’activation. Le menu indique que cette discussion utilise OpenAI. Aucun appel
 ne part à l’affichage du menu ou pour une commande. Le bouton **Rechercher un film**
 ouvre la recherche classique sans IA ; **Contact** transmet les messages à
-l’administrateur sans IA. **Menu** quitte ces modes et rétablit la discussion par
+l’administrateur sans IA. **Aide** quitte ces modes et rétablit la discussion par
 défaut. La recherche classique expire après 15 minutes d’inactivité. Les vidéos,
 les règles et la gestion des jaquettes ne déclenchent aucun appel OpenAI.
 
@@ -148,7 +148,7 @@ Le contexte contient au plus 500 titres ; au-delà, il privilégie les correspon
 avec la question et les ajouts récents, et signale cette sélection partielle à l’IA.
 L’IA peut aussi discuter de films hors catalogue sans proposer de lien pour eux.
 L’IA ne peut ni publier, ni retirer un film,
-ni exécuter des commandes. Le bouton **Menu** efface la mémoire de la discussion.
+ni exécuter des commandes. Le bouton **Aide** efface la mémoire de la discussion.
 
 La mémoire des deux derniers échanges reste uniquement en RAM et expire après
 15 minutes d’inactivité (nettoyage au passage suivant de la boucle). Les requêtes
@@ -380,3 +380,8 @@ Telegram. Une correspondance ambiguë ou sans résumé français laisse le post 
 Le suivi persistant `synopsis_jobs` évite de rééditer les publications déjà traitées ;
 les limitations Telegram suspendent les modifications pendant le délai demandé.
 Aucun appel OpenAI n’est utilisé pour les synopsis.
+
+Le bouton **Aide**, à droite de Contact, affiche les commandes `/start`, `/aide`
+(alias `/help`), `/recherche titre` et `/id`. Les anciennes commandes `/catalogue`,
+`/publier` et `/supprimer` sont signalées comme simples raccourcis vers l’accueil.
+Les boutons Aide et les commandes `/aide` et `/help` quittent le mode en cours.
