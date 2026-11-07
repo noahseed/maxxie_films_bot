@@ -82,9 +82,10 @@ comme documents restent des documents : ils ne sont pas convertis en vidéo.
 Pour les nouveaux posts, la légende complète et ses entités de mise en forme sont
 mémorisées et conservées lors de la modification. Pour les anciennes vidéos dont
 le bot ne disposait pas de la légende complète, le titre enregistré est utilisé
-comme légende, conformément au choix de l’administrateur. Les anciennes jaquettes
-envoyées séparément ne sont pas supprimées automatiquement, leurs identifiants
-n’ayant pas été enregistrés. Le bot doit avoir le droit de modifier les messages
+comme légende, conformément au choix de l’administrateur. Le 7 novembre 2026, les 108 anciennes photos de jaquettes ont été identifiées
+dans Telegram puis supprimées par le bot, en excluant tous les identifiants des
+vidéos. Le reçu privé de cette opération est conservé sur le VPS dans
+`/var/backups/maxxie-films-bot/legacy-poster-cleanup-20261107.json`. Le bot doit avoir le droit de modifier les messages
 du canal. Telegram choisit l’affichage de la couverture, sans placement gauche/droite imposable.
 
 La recherche utilise le titre et l’année lorsqu’elle est présente ; les mentions
