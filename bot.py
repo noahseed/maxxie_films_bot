@@ -551,8 +551,10 @@ class Bot:
             self.send(chat_id, "Aucun film disponible dans le canal pour le moment.",
                       reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             return
-        _, title, message_id = film
-        self.send(chat_id, f"🎲 Un film au hasard :\n\n🎬 {title}",
+        film_id, title, message_id = film
+        synopsis = self.catalogue.channel_synopsis(self.channel_id, film_id)
+        text = f"🎲 Un film au hasard :\n\n🎬 {title}\n\n" + (synopsis or "Synopsis indisponible pour ce film.")
+        self.send(chat_id, text,
                   reply_markup={"inline_keyboard": [
                       [{"text": "🎬 Voir le film", "url": self.film_link(message_id)}],
                       [{"text": "🎲 Un autre film", "callback_data": "hasard"}, HELP_BUTTON]]})

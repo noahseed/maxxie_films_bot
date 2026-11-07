@@ -106,6 +106,16 @@ class MembershipTests(unittest.TestCase):
         self.assertEqual(response['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
         self.assertEqual(response['reply_markup']['inline_keyboard'][1][0]['callback_data'], 'hasard')
 
+    def test_random_displays_saved_synopsis_under_title(self):
+        self.store.queue_synopses(-100123)
+        self.store.synopsis_status(-100123, 50, 'done', 'Un film\n\nUn résumé du film.')
+        self.callback('hasard')
+        response = self.api.call.call_args.kwargs
+        self.assertIn('🎬 Un film\n\nUn résumé du film.', response['text'])
+        self.store.synopsis_status(-100123, 50, 'not_found')
+        self.callback('hasard')
+        self.assertIn('Synopsis indisponible', self.api.call.call_args.kwargs['text'])
+
     def test_random_handles_empty_catalogue_and_requires_membership(self):
         self.store.remove(1)
         self.callback('hasard')

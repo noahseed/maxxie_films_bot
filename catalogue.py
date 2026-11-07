@@ -260,6 +260,19 @@ class Catalogue:
                     title=excluded.title,status='queued',caption=NULL
                 WHERE synopsis_jobs.film_id<>excluded.film_id OR synopsis_jobs.title<>excluded.title""", (channel_id,))
 
+    def channel_synopsis(self, channel_id, film_id):
+        row = self.db.execute("""SELECT synopsis_jobs.caption,synopsis_jobs.title
+            FROM synopsis_jobs JOIN channel_films
+                ON channel_films.channel_id=synopsis_jobs.channel_id
+                AND channel_films.message_id=synopsis_jobs.message_id
+                AND channel_films.film_id=synopsis_jobs.film_id
+            JOIN films ON films.id=synopsis_jobs.film_id AND films.title=synopsis_jobs.title
+            WHERE synopsis_jobs.channel_id=? AND synopsis_jobs.film_id=?
+                AND synopsis_jobs.status='done'""", (channel_id, film_id)).fetchone()
+        if row and row[0] and row[0].startswith(row[1] + '\n\n'):
+            return row[0][len(row[1]) + 2:]
+        return None
+
     def next_synopsis(self, channel_id):
         self.queue_synopses(channel_id)
         return self.db.execute("""SELECT message_id,film_id,title FROM synopsis_jobs

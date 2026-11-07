@@ -388,3 +388,6 @@ Les boutons Aide et les commandes `/aide` et `/help` quittent le mode en cours.
 
 Le bouton **Hasard** propose un film choisi dans le catalogue du canal, avec un lien
 vers sa publication et un bouton pour en tirer un autre, sans appel OpenAI.
+
+Le résultat **Hasard** affiche le synopsis enregistré sous le titre du film.
+Sans résumé confirmé, il indique « Synopsis indisponible pour ce film. ».
