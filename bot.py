@@ -90,6 +90,7 @@ class Bot:
         self.poster_executor = ThreadPoolExecutor(max_workers=1) if posters else None
         self.synopsis_job = None
         self.synopsis_pause_until = 0
+        self.random_jobs = {}
         self.poster_job = None
         self.poster_pause_until = 0
 
@@ -437,6 +438,7 @@ class Bot:
         self.send(chat_id, "Film publié dans le canal.")
 
     def poll_posters(self):
+        self.poll_random()
         self.poll_synopses()
         if not self.posters:
             return
@@ -551,13 +553,49 @@ class Bot:
             self.send(chat_id, "Aucun film disponible dans le canal pour le moment.",
                       reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             return
+        if self.posters and chat_id not in self.random_jobs and len(self.random_jobs) < 2:
+            self.random_jobs[chat_id] = (self.poster_executor.submit(self.posters.download, film[1]), film)
+        elif chat_id not in self.random_jobs:
+            self.send_random(chat_id, film)
+
+    def poll_random(self):
+        for chat_id, (future, film) in list(self.random_jobs.items()):
+            if not future.done():
+                continue
+            del self.random_jobs[chat_id]
+            poster = None
+            try:
+                poster = future.result()
+            except (PosterError, OSError, ValueError):
+                pass
+            if self.catalogue.channel_message(self.channel_id, film[0]) != film[2]:
+                continue
+            if not self.check_membership(chat_id):
+                continue
+            self.send_random(chat_id, film, poster)
+
+    def send_random(self, chat_id, film, poster=None):
         film_id, title, message_id = film
         synopsis = self.catalogue.channel_synopsis(self.channel_id, film_id)
         text = f"🎲 Un film au hasard :\n\n🎬 {title}\n\n" + (synopsis or "Synopsis indisponible pour ce film.")
-        self.send(chat_id, text,
-                  reply_markup={"inline_keyboard": [
-                      [{"text": "🎬 Voir le film", "url": self.film_link(message_id)}],
-                      [{"text": "🎲 Un autre film", "callback_data": "hasard"}, HELP_BUTTON]]})
+        markup = {"inline_keyboard": [
+            [{"text": "🎬 Voir le film", "url": self.film_link(message_id)}],
+            [{"text": "🎲 Un autre film", "callback_data": "hasard"}, HELP_BUTTON]]}
+        if poster:
+            try:
+                with Path(poster['path']).open('rb') as stream:
+                    body = stream.read(5_000_001)
+                if len(body) > 5_000_000 or not body.startswith(b'\xff\xd8\xff'):
+                    raise ValueError('Jaquette invalide')
+                caption = text
+                if len(caption.encode('utf-16-le')) // 2 > 1024:
+                    caption = caption.encode('utf-16-le')[:2046].decode('utf-16-le', errors='ignore').rstrip() + '…'
+                self.api.call('sendPhoto', chat_id=chat_id, caption=caption,
+                              _upload=body, reply_markup=markup)
+                return
+            except (OSError, ValueError):
+                pass
+        self.send(chat_id, text, reply_markup=markup)
 
     def list_films(self, chat_id, query="", page=0):
         if not query.strip():
@@ -666,7 +704,7 @@ def main():
                 LOG.info("Bot vérifié ; réception des messages.")
             bot.poll_ai()
             bot.poll_posters()
-            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs or bot.poster_job or bot.synopsis_job else 30,
+            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs or bot.poster_job or bot.synopsis_job or bot.random_jobs else 30,
                                allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"])
             for update in updates:
                 if stop.is_set():

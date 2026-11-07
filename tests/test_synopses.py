@@ -1,5 +1,7 @@
 from concurrent.futures import Future
 import json
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import Mock
 
@@ -45,6 +47,31 @@ class SynopsisTests(unittest.TestCase):
         self.bot.poll_synopses()
         self.api.call.assert_not_called()
         self.assertIsNone(self.store.next_synopsis(-100123))
+
+    def test_random_sends_poster_with_synopsis_and_buttons(self):
+        self.store.queue_synopses(-100123)
+        self.store.synopsis_status(-100123, 50, 'done', 'Matrix 1999\n\nRésumé du film. ' + 'Long résumé. ' * 150)
+        self.api.call.return_value = {'status': 'member'}
+        with tempfile.TemporaryDirectory() as directory:
+            poster = Path(directory) / 'poster.jpg'
+            poster.write_bytes(b'\xff\xd8\xffimage')
+            self.bot.show_random(2)
+            self.api.call.assert_not_called()
+            self.future.set_result({'path': poster})
+            self.bot.poll_random()
+        args = self.api.call.call_args
+        self.assertEqual(args.args[0], 'sendPhoto')
+        self.assertIn('Matrix 1999\n\nRésumé du film.', args.kwargs['caption'])
+        self.assertLessEqual(len(args.kwargs['caption'].encode('utf-16-le')) // 2, 1024)
+        self.assertEqual(args.kwargs['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
+
+    def test_random_without_matched_poster_falls_back_to_text(self):
+        self.api.call.return_value = {'status': 'member'}
+        self.bot.show_random(2)
+        self.future.set_result(None)
+        self.bot.poll_random()
+        self.assertEqual(self.api.call.call_args.args[0], 'sendMessage')
+        self.assertIn('Matrix 1999', self.api.call.call_args.kwargs['text'])
 
     def test_caption_fits_telegram_utf16_limit(self):
         caption = synopsis_caption('🎬' * 100, 'Résumé 😀 ' * 500, 603)

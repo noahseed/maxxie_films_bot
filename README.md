@@ -391,3 +391,8 @@ vers sa publication et un bouton pour en tirer un autre, sans appel OpenAI.
 
 Le résultat **Hasard** affiche le synopsis enregistré sous le titre du film.
 Sans résumé confirmé, il indique « Synopsis indisponible pour ce film. ».
+
+**Hasard** envoie aussi la jaquette disponible avec le titre et le synopsis en
+légende, et conserve les boutons de lecture et de nouveau tirage. Telegram choisit
+la disposition de la photo. Sans jaquette identifiée, le résultat reste textuel.
+La récupération de la jaquette se fait en arrière-plan, sans appel OpenAI.
