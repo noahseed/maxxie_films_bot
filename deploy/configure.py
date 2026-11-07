@@ -25,7 +25,6 @@ def main():
             raise SystemExit('Un webhook existe déjà ; configuration annulée.')
         channel_id = verify_channel(api, identity['id'], '@maxxie_films')
         admins = user_ids(input('Identifiants numériques des administrateurs (virgules) : '))
-        allowed = user_ids(input('Identifiants des autres utilisateurs autorisés (facultatif) : '))
         if not admins:
             raise ValueError('Au moins un administrateur est nécessaire')
         notify_id = next(iter(admins)) if len(admins) == 1 else int(input('Identifiant administrateur destinataire des notifications privées : '))
@@ -39,7 +38,6 @@ def main():
                      f'CHANNEL_ID={channel_id}\n'
                      f"ADMIN_USER_IDS={','.join(map(str, sorted(admins)))}\n"
                      f'NOTIFY_CHAT_ID={notify_id}\n'
-                     f"ALLOWED_USER_IDS={','.join(map(str, sorted(allowed)))}\n"
                      'DATABASE_PATH=/var/lib/maxxie-films-bot/catalogue.sqlite3\n')
     print('Configuration enregistrée. Démarrage : sudo systemctl enable --now maxxie-films-bot')
 

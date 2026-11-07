@@ -16,6 +16,7 @@ LOG = logging.getLogger("maxxie-films")
 HELP = ("🎬 Maxxie Films\n\n"
         "Bienvenue dans notre coin cinéma ! 🍿\n"
         "Recherche un film par son titre.\n"
+        "Pour discuter de cinéma, choisis Assistant IA.\n"
         "Les résultats ouvrent les films directement dans le canal. Bonne séance !")
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo pour la publier dans le canal "
               "avec son nom de fichier sans .mp4.")
@@ -67,7 +68,7 @@ class Bot:
     def __init__(self, api, catalogue, admins, allowed_users, channel_id=None, notify_chat_id=None,
                  ai=None, ai_per_user=20, ai_total=100, posters=None):
         self.api, self.catalogue = api, catalogue
-        self.admins, self.allowed_users = set(admins), set(allowed_users)
+        self.admins = set(admins)
         self.channel_id = channel_id
         self.notify_chat_id = notify_chat_id
         self.ai, self.ai_per_user, self.ai_total = ai, ai_per_user, ai_total
@@ -118,10 +119,6 @@ class Bot:
             return
         if not callback and command == "/id":
             self.send(chat_id, f"Ton identifiant Telegram : {user_id}")
-            return
-        if user_id not in self.allowed_users | self.admins:
-            self.send(chat_id, "Ce catalogue est privé. Demande l’accès à son administrateur. "
-                      f"Ton identifiant : {user_id}")
             return
         if callback:
             data = callback.get("data", "")
@@ -326,9 +323,6 @@ class Bot:
             self.catalogue.clear_reply(owner_id)
             self.send(owner_id, "La session de réponse a expiré.")
             return
-        if target not in self.allowed_users | self.admins:
-            self.send(owner_id, "Cet utilisateur n’a plus accès au bot.")
-            return
         try:
             member = self.api.call("getChatMember", chat_id=self.channel_id, user_id=target)
             if not (member.get("status") in ("creator", "administrator", "member") or
@@ -527,7 +521,7 @@ def main():
     admins = user_ids(os.environ.get("ADMIN_USER_IDS", ""))
     if not admins:
         raise SystemExit("ADMIN_USER_IDS doit contenir au moins un administrateur.")
-    allowed = user_ids(os.environ.get("ALLOWED_USER_IDS", ""))
+    allowed = set()  # L’abonnement au canal suffit ; ancienne liste d’accès ignorée.
     api = Telegram(os.environ["BOT_TOKEN"])
     expected = os.environ["BOT_USERNAME"].lstrip("@").lower()
     path = Path(os.environ.get("DATABASE_PATH", "/var/lib/maxxie-films-bot/catalogue.sqlite3"))

@@ -51,7 +51,7 @@ class AssistantTests(unittest.TestCase):
         self.api = Mock()
         self.api.call.return_value = {'status': 'member'}
         self.store = Catalogue(':memory:')
-        self.bot = Bot(self.api, self.store, {1}, {2}, -100123, ai=Mock())
+        self.bot = Bot(self.api, self.store, {1}, set(), -100123, ai=Mock())
         self.bot.ai_executor.shutdown()
         self.future = Future()
         self.bot.ai_executor = Mock()
@@ -100,6 +100,16 @@ class AssistantTests(unittest.TestCase):
         self.callback('assistant')
         self.assertNotIn(2, self.bot.ai_sessions)
         self.bot.ai_executor.submit.assert_not_called()
+
+    def test_subscriber_can_chat_without_being_on_an_access_list(self):
+        self.callback('assistant')
+        self.assertIn(2, self.bot.ai_sessions)
+        self.message('Quels films me conseilles-tu ?')
+        self.bot.ai_executor.submit.assert_called_once()
+        self.future.set_result(('Quel genre de films aimes-tu ?', []))
+        self.bot.poll_ai()
+        self.assertEqual(self.api.call.call_args.kwargs['chat_id'], 2)
+        self.assertIn('Quel genre', self.api.call.call_args.kwargs['text'])
 
     def test_daily_limits_are_reserved_before_generation(self):
         self.assertTrue(self.store.reserve_ai(2, per_user=1, total=2))

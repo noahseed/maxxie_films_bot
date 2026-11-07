@@ -6,7 +6,7 @@ automatiquement dans le canal, avec leur nom de fichier sans le suffixe `.mp4`
 (également reconnu en majuscules). Exemple : `Mon Film.mp4` → `Mon Film`.
 Le nom de fichier prime sur une légende existante. Si Telegram ne fournit pas le nom,
 la légende sert de titre ; sans les deux, le bot demande de renvoyer le fichier.
-Les utilisateurs autorisés recherchent les films et ouvrent leur publication dans le canal.
+Les abonnés du canal recherchent les films et ouvrent leur publication dans le canal.
 Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQLite.
 
 ## Utilisation
@@ -62,7 +62,7 @@ Chaque notification Contact comporte un bouton **Répondre**, réservé au compt
 le bot la transmet au destinataire et confirme l’envoi. Les messages suivants
 restent dans cette conversation jusqu’au **Menu**, une autre action ou l’expiration
 de la session de 15 minutes. Les vidéos envoyées dans ce mode ne sont pas publiées
-dans le canal. Le destinataire doit toujours être autorisé et abonné au canal.
+dans le canal. Le destinataire doit toujours être abonné au canal.
 
 Les boutons de réponse utilisent des références aléatoires conservées sept jours,
 liées à l’administrateur et au destinataire ; un autre utilisateur ne peut pas
@@ -179,7 +179,7 @@ qui le contiennent sont donc également secrètes. Documentation de référence 
 
 À la première interaction privée d’un utilisateur, le bot envoie un message privé
 à `NOTIFY_CHAT_ID`, avec le nom affiché, le pseudo si disponible et l’identifiant
-Telegram. Les tentatives d’accès d’utilisateurs non autorisés sont aussi signalées.
+Telegram. Les premières visites d’utilisateurs pas encore abonnés sont aussi signalées.
 Les messages du canal ne déclenchent pas de notification. Le destinataire ne reçoit
 pas de notification pour ses propres interactions.
 
@@ -213,9 +213,11 @@ n’est envoyé en privé aux utilisateurs. Les anciens boutons de téléchargem
 renvoient aussi vers la publication, après vérification d’abonnement.
 Les notifications de première visite sont enregistrées avant le contrôle d’accès.
 
-Les listes `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` continuent de limiter l’accès au
-catalogue privé : l’abonnement est une condition supplémentaire. Le bot doit rester
-administrateur du canal pour vérifier les abonnements des autres utilisateurs.
+L’abonnement au canal suffit pour accéder aux fonctionnalités utilisateur, y
+compris Assistant IA et Contact. Aucune inscription dans une liste d’accès n’est
+nécessaire. L’ancienne variable `ALLOWED_USER_IDS` est ignorée. `ADMIN_USER_IDS`
+réserve uniquement les fonctions administrateur aux comptes configurés. Le bot
+doit rester administrateur du canal pour vérifier les abonnements.
 
 La détection des doublons utilise l’identifiant unique de fichier Telegram, même
 si le fichier est renommé ou envoyé comme document vidéo. Elle s’applique aux
@@ -225,8 +227,8 @@ fichier réencodé peut donc ne pas être reconnu. Si le message a été supprim
 Telegram, le lien peut être périmé. Les suppressions ne sont pas synchronisées
 automatiquement et nécessitent une maintenance du catalogue sur le serveur.
 
-Seuls `ADMIN_USER_IDS` et `ALLOWED_USER_IDS` accèdent au catalogue privé du bot.
-Le canal public reste accessible selon ses propres règles Telegram.
+Tous les abonnés du canal peuvent utiliser le bot. Le canal public reste
+accessible selon ses propres règles Telegram.
 
 ## Canal Maxxie Films
 
