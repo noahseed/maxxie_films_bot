@@ -73,7 +73,7 @@ class MembershipTests(unittest.TestCase):
         response = self.api.call.call_args.kwargs
         self.assertNotIn('/', response['text'])
         rows = response['reply_markup']['inline_keyboard']
-        self.assertEqual([b['callback_data'] for b in rows[0]], ['recherche', 'aide'])
+        self.assertEqual([b['callback_data'] for b in rows[0]], ['recherche', 'regles'])
         self.callback('recherche')
         self.bot.handle({'message': {'chat': {'id': 2, 'type': 'private'},
             'from': {'id': 2}, 'text': 'Un film'}})

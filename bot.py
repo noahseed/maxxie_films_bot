@@ -202,10 +202,10 @@ class Bot:
         self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
                   reply_markup={"inline_keyboard": [
                       [{"text": "🔎 Rechercher un film", "callback_data": "recherche"},
-                       {"text": "❓ Aide", "callback_data": "aide"}],
+                       {"text": "📜 Lire les règles", "callback_data": "regles"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
-                      [{"text": "📜 Lire les règles", "callback_data": "regles"},
-                       {"text": "✉️ Contact", "callback_data": "contact"}]]})
+                      [{"text": "✉️ Contact", "callback_data": "contact"},
+                       {"text": "❓ Aide", "callback_data": "aide"}]]})
 
     def send_contact(self, chat_id, message):
         # Garder le mode contact pour les messages suivants, y compris un album.
