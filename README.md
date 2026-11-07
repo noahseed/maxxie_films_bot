@@ -13,7 +13,7 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans SQL
 
 Le menu propose **Rechercher un film** et **Lire les règles** sur la première ligne,
 **Rejoindre le canal** seul sur la deuxième, puis **Contact** et **Menu**
-sur la troisième, puis **Assistant IA** sur une quatrième ligne. Le règlement s’affiche en privé avec un retour au menu.
+sur la troisième. Le règlement s’affiche en privé avec un retour au menu.
 L’option Catalogue a été retirée ; les anciens boutons de
 catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
 son message dans le canal. Seuls les films indexés dans ce canal sont proposés. La recherche demande simplement de saisir un titre, sans commande.
@@ -131,13 +131,14 @@ Sources : [authentification TMDB](https://developer.themoviedb.org/docs/authenti
 
 ## Assistant IA OpenAI
 
-Le bouton **Assistant IA** ouvre une discussion consacrée au cinéma. Aucun appel
-OpenAI ne part au démarrage du bot, à l’affichage du menu ou au clic sur le bouton
-seul : il faut activer ce bouton puis envoyer un texte. La recherche classique,
-les règles, Contact et la gestion des jaquettes ne déclenchent aucun appel OpenAI.
-Une navigation vers le menu ou un autre bouton, une commande ou l’expiration de
-la session désactive l’IA pour les prochains messages. Une requête déjà transmise
-à OpenAI avant cette désactivation peut toutefois être déjà facturée.
+L’assistant cinéma répond par défaut aux messages texte libres, sans bouton
+d’activation. Le menu indique que cette discussion utilise OpenAI. Aucun appel
+ne part à l’affichage du menu ou pour une commande. Le bouton **Rechercher un film**
+ouvre la recherche classique sans IA ; **Contact** transmet les messages à
+l’administrateur sans IA. **Menu** quitte ces modes et rétablit la discussion par
+défaut. La recherche classique expire après 15 minutes d’inactivité. Les vidéos,
+les règles et la gestion des jaquettes ne déclenchent aucun appel OpenAI.
+
 Les messages saisis dans ce mode ainsi que les titres et identifiants internes du
 catalogue du canal sont envoyés à OpenAI ; les conversations Contact, la recherche
 classique, les vidéos et leurs identifiants Telegram ne le sont pas. L’IA sélectionne
@@ -147,7 +148,7 @@ Le contexte contient au plus 500 titres ; au-delà, il privilégie les correspon
 avec la question et les ajouts récents, et signale cette sélection partielle à l’IA.
 L’IA peut aussi discuter de films hors catalogue sans proposer de lien pour eux.
 L’IA ne peut ni publier, ni retirer un film,
-ni exécuter des commandes. Le bouton **Menu** termine la discussion.
+ni exécuter des commandes. Le bouton **Menu** efface la mémoire de la discussion.
 
 La mémoire des deux derniers échanges reste uniquement en RAM et expire après
 15 minutes d’inactivité (nettoyage au passage suivant de la boucle). Les requêtes

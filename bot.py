@@ -17,7 +17,7 @@ LOG = logging.getLogger("maxxie-films")
 HELP = ("🎬 Maxxie Films\n\n"
         "Bienvenue dans notre coin cinéma ! 🍿\n"
         "Recherche un film par son titre.\n"
-        "Pour discuter de cinéma, choisis Assistant IA.\n"
+        "Écris directement pour discuter avec l’IA cinéma (OpenAI).\n"
         "Les résultats ouvrent les films directement dans le canal. Bonne séance !")
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo pour la publier dans le canal "
               "avec son nom de fichier sans .mp4.")
@@ -74,6 +74,7 @@ class Bot:
         self.notify_chat_id = notify_chat_id
         self.ai, self.ai_per_user, self.ai_total = ai, ai_per_user, ai_total
         self.ai_sessions, self.ai_jobs = {}, {}
+        self.search_sessions = {}
         self.ai_executor = ThreadPoolExecutor(max_workers=2) if ai else None
         self.posters = posters
         self.poster_executor = ThreadPoolExecutor(max_workers=1) if posters else None
@@ -120,25 +121,18 @@ class Bot:
             return
         if not callback and text.startswith('/'):
             self.ai_sessions.pop(user_id, None)
+            self.search_sessions.pop(user_id, None)
         if not callback and command == "/id":
             self.send(chat_id, f"Ton identifiant Telegram : {user_id}")
             return
         if callback:
             data = callback.get("data", "")
+            self.search_sessions.pop(user_id, None)
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
             self.ai_sessions.pop(user_id, None)
             if data == "assistant":
-                if not self.ai:
-                    self.send(chat_id, "L’assistant IA attend sa configuration OpenAI.",
-                              reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
-                    return
-                self.ai_sessions = {uid: session for uid, session in self.ai_sessions.items()
-                                    if time.monotonic() - session['time'] < 900}
-                self.ai_sessions[user_id] = {'time': time.monotonic(), 'history': []}
-                self.send(chat_id, "🤖 Assistant IA activé. Pose ta question sur le cinéma ou décris le film que tu cherches. "
-                          "Tes messages dans ce mode sont envoyés à OpenAI. Le bouton Menu désactive l’IA.",
-                          reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
+                self.show_menu(chat_id, user_id)
             elif data.startswith("repondre:"):
                 target = (self.catalogue.begin_reply(user_id, data.split(":", 1)[1])
                           if user_id == self.notify_chat_id and user_id in self.admins else None)
@@ -165,6 +159,7 @@ class Bot:
             elif data == "regles":
                 self.send(chat_id, RULES, reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
             elif data == "recherche":
+                self.search_sessions[user_id] = time.monotonic()
                 self.send(chat_id, "🔎 Envoie un titre, même approximatif. Tu peux préciser "
                           "une année et une langue : par exemple « Matrix 1999 VF ».",
                           reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
@@ -181,9 +176,6 @@ class Bot:
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
             self.ai_sessions.pop(user_id, None)
-        elif user_id in self.ai_sessions:
-            self.ask_ai(user_id, text)
-            return
         elif self.catalogue.reply_target(user_id):
             self.send_reply(user_id, message)
             return
@@ -228,7 +220,14 @@ class Bot:
         elif command in ("/publier", "/supprimer"):
             self.show_menu(chat_id, user_id)
         elif text and not text.startswith("/"):
-            self.list_films(chat_id, text[:200])
+            if time.monotonic() - self.search_sessions.get(user_id, float('-inf')) < 900:
+                self.search_sessions[user_id] = time.monotonic()
+                self.list_films(chat_id, text[:200])
+            elif self.ai:
+                self.search_sessions.pop(user_id, None)
+                self.ask_ai(user_id, text)
+            else:
+                self.list_films(chat_id, text[:200])
 
     def show_menu(self, chat_id, user_id):
         self.send(chat_id, HELP + (ADMIN_HELP if user_id in self.admins else ""),
@@ -237,18 +236,11 @@ class Bot:
                        {"text": "📜 Lire les règles", "callback_data": "regles"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"}],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
-                       MENU_BUTTON],
-                      [{"text": "🤖 Assistant IA", "callback_data": "assistant"}]]})
+                       MENU_BUTTON]]})
 
     def ask_ai(self, user_id, text):
-        session = self.ai_sessions.get(user_id)
-        if not self.ai or session is None:
-            self.send(user_id, "Active d’abord le bouton Assistant IA pour discuter avec OpenAI.",
-                      reply_markup={"inline_keyboard": [[MENU_BUTTON]]})
-            return
-        if time.monotonic() - session['time'] >= 900:
-            self.ai_sessions.pop(user_id, None)
-            self.send(user_id, "La discussion a expiré. Ouvre à nouveau le bouton Assistant IA.")
+        if not self.ai:
+            self.send(user_id, "L’assistant IA attend sa configuration OpenAI.")
             return
         if not text or len(text) > 2000:
             self.send(user_id, "Écris une question de cinéma de 2 000 caractères maximum.")
@@ -259,6 +251,10 @@ class Bot:
         if not self.catalogue.reserve_ai(user_id, self.ai_per_user, self.ai_total):
             self.send(user_id, "La limite quotidienne de l’assistant IA est atteinte. Réessaie demain.")
             return
+        session = self.ai_sessions.get(user_id)
+        if session is None or time.monotonic() - session['time'] >= 900:
+            session = {'time': time.monotonic(), 'history': []}
+            self.ai_sessions[user_id] = session
         session['time'] = time.monotonic()
         rows, partial = self.catalogue.ai_catalogue(self.channel_id, text)
         snapshot = {film_id: (title, message_id) for film_id, title, message_id in rows}

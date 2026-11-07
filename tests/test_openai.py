@@ -138,43 +138,44 @@ class AssistantTests(unittest.TestCase):
         self.bot.poll_ai()
         self.assertEqual(len(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']), 1)
 
-    def test_contact_and_ordinary_search_never_call_openai(self):
+    def test_contact_and_explicit_search_never_call_openai(self):
+        self.bot.notify_chat_id = 1
+        self.callback('recherche')
         self.message('Matrix')
         self.callback('contact')
-        self.assertEqual(self.bot.ai_executor.submit.call_count, 0)
-
-    def test_direct_ai_entry_without_activation_never_uses_api_or_quota(self):
-        self.bot.ask_ai(2, 'Bonjour')
+        self.message('Bonjour administrateur')
         self.bot.ai_executor.submit.assert_not_called()
-        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ai_usage').fetchone()[0], 0)
 
-    def test_clicking_assistant_does_not_itself_generate_a_response(self):
-        self.callback('assistant')
+    def test_default_text_uses_ai_without_activation(self):
+        self.message('Bonjour')
+        self.bot.ai_executor.submit.assert_called_once()
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ai_usage').fetchone()[0], 1)
+
+    def test_menu_has_no_ai_button_and_does_not_generate(self):
+        self.callback('menu')
+        buttons = self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']
+        self.assertFalse(any(button.get('callback_data') == 'assistant'
+                             for row in buttons for button in row))
         self.bot.ai_executor.submit.assert_not_called()
-        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ai_usage').fetchone()[0], 0)
 
-    def test_navigation_disables_ai_before_further_messages(self):
-        for action in ('menu', 'contact', 'regles', 'recherche', 'aide', 'abonnement'):
-            self.callback('assistant')
-            self.callback(action)
-            self.message('Matrix')
-            self.assertNotIn(2, self.bot.ai_sessions)
-            self.bot.ai_executor.submit.assert_not_called()
-
-    def test_id_command_also_disables_ai(self):
-        self.callback('assistant')
-        self.message('/id')
+    def test_menu_returns_from_search_to_default_ai(self):
+        self.callback('recherche')
+        self.callback('menu')
         self.message('Matrix')
-        self.assertNotIn(2, self.bot.ai_sessions)
-        self.bot.ai_executor.submit.assert_not_called()
+        self.bot.ai_executor.submit.assert_called_once()
 
-    def test_expired_activation_never_uses_api_or_quota(self):
-        self.callback('assistant')
-        self.bot.ai_sessions[2]['time'] = 0
+    def test_commands_do_not_generate_but_next_text_uses_ai(self):
+        self.message('/id')
+        self.bot.ai_executor.submit.assert_not_called()
+        self.message('Matrix')
+        self.bot.ai_executor.submit.assert_called_once()
+
+    def test_expired_history_starts_fresh_automatically(self):
+        self.bot.ai_sessions[2] = {'time': 0, 'history': [{'role': 'user', 'content': 'Ancien'}]}
         with patch('bot.time.monotonic', return_value=901):
             self.message('Bonjour')
-        self.bot.ai_executor.submit.assert_not_called()
-        self.assertEqual(self.store.db.execute('SELECT count(*) FROM ai_usage').fetchone()[0], 0)
+        self.bot.ai_executor.submit.assert_called_once()
+        self.assertEqual(self.bot.ai_executor.submit.call_args.args[2], [])
 
     def test_non_member_cannot_start_assistant(self):
         self.api.call.return_value = {'status': 'left'}
@@ -184,7 +185,6 @@ class AssistantTests(unittest.TestCase):
 
     def test_subscriber_can_chat_without_being_on_an_access_list(self):
         self.callback('assistant')
-        self.assertIn(2, self.bot.ai_sessions)
         self.message('Quels films me conseilles-tu ?')
         self.bot.ai_executor.submit.assert_called_once()
         self.future.set_result(('Quel genre de films aimes-tu ?', []))
