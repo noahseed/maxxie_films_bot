@@ -76,6 +76,7 @@ class Bot:
         self.posters = posters
         self.poster_executor = ThreadPoolExecutor(max_workers=1) if posters else None
         self.poster_job = None
+        self.poster_pause_until = 0
 
     def send(self, chat_id, text, **params):
         return self.api.call("sendMessage", chat_id=chat_id, text=text, **params)
@@ -400,6 +401,8 @@ class Bot:
     def poll_posters(self):
         if not self.posters:
             return
+        if time.monotonic() < self.poster_pause_until:
+            return
         if self.poster_job:
             future, channel_id, message_id, film_id, title = self.poster_job
             if not future.done():
@@ -432,12 +435,18 @@ class Bot:
             except TelegramError as error:
                 if sending and error.reason == 'not_modified':
                     self.catalogue.poster_status(channel_id, message_id, 'covered')
+                elif sending and error.code == 429:
+                    self.catalogue.poster_status(channel_id, message_id, 'queued')
+                    self.poster_pause_until = time.monotonic() + max(error.retry_after or 5, 1)
+                    LOG.warning('Couvertures suspendues temporairement pour respecter la limite Telegram.')
                 else:
                     LOG.warning('Modification de couverture non confirmée (code %s).', error.code)
             except (OSError, ValueError):
                 if not sending:
                     self.catalogue.poster_status(channel_id, message_id, 'failed')
                 LOG.warning('Envoi de jaquette non confirmé ; aucun renvoi automatique.')
+        if time.monotonic() < self.poster_pause_until:
+            return
         row = self.catalogue.next_poster(self.channel_id)
         if row:
             message_id, film_id, title = row

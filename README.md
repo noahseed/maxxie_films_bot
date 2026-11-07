@@ -119,7 +119,8 @@ couvertures appliquées (`covered`) et les modifications au résultat incertain
 photos séparées sont reprises pour appliquer une couverture. Un changement de
 titre permet une nouvelle recherche si aucune couverture n’avait été appliquée.
 Les tâches sans correspondance ou en erreur ne sont pas retentées sans changement
-de titre. Les erreurs sont visibles dans le journal du service. Les sauvegardes
+de titre. Si Telegram refuse temporairement une modification avec un code 429,
+la tâche est conservée et reprend après le délai demandé par le serveur. Les erreurs sont visibles dans le journal du service. Les sauvegardes
 incluent la file et la configuration ; le cache d’images, reproductible, n’est pas
 archivé.
 
@@ -298,7 +299,7 @@ peut alors la renouveler. Les erreurs d’envoi ne sont pas rejouées automatiqu
 Les appels Telegram utilisent IPv4 pour éviter les délais intermittents observés
 avec le choix automatique IPv6/IPv4 du VPS. La connexion HTTPS est réutilisée ;
 une connexion inactive depuis plus de 20 secondes est remplacée. Le délai de
-connexion est limité à 3 secondes et celui de lecture à 8 secondes (35 secondes
+connexion est limité à 3 secondes et celui de lecture à 8 secondes (30 secondes pour les médias, 35 secondes
 pour une réception longue de 30 secondes). Seuls les appels de lecture peuvent
 être retentés une fois après une erreur réseau. Un envoi incertain n’est jamais
 répété automatiquement. Les appels hors long polling dépassant une seconde sont

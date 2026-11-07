@@ -113,6 +113,16 @@ class PosterQueueTests(unittest.TestCase):
         self.bot.poll_posters()
         self.assertEqual(self.status(), 'covered')
 
+    def test_rate_limit_is_respected_without_losing_the_job(self):
+        self.bot.poll_posters()
+        self.api.edit_video_cover.side_effect = TelegramError(429, retry_after=30)
+        self.future.set_result({'path': Path('/tmp/poster.jpg'), 'title': 'Matrix', 'id': 1})
+        with self.assertLogs('maxxie-films', level='WARNING'):
+            self.bot.poll_posters()
+        self.assertEqual(self.status(), 'queued')
+        self.bot.poll_posters()
+        self.assertEqual(self.bot.poster_executor.submit.call_count, 1)
+
     def test_no_match_does_not_send_any_photo(self):
         self.bot.poll_posters()
         self.future.set_result(None)
