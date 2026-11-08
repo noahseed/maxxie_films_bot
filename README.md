@@ -376,7 +376,7 @@ python3 /opt/maxxie-films-bot/migrate_postgres.py \
   'postgresql:///maxxie_films?host=/var/run/postgresql'
 ```
 
-Le script exige une destination vide, copie les onze tables dans une transaction,
+Le script exige une destination vide, copie les tables du catalogue et des fonctionnalités dans une transaction,
 compare chaque ligne et recale la séquence des identifiants de films. Ajouter
 `DATABASE_URL=postgresql:///maxxie_films?host=/var/run/postgresql` dans la
 configuration, puis redémarrer. Le fichier SQLite reste conservé comme copie
@@ -429,3 +429,69 @@ La récupération de la jaquette se fait en arrière-plan, sans appel OpenAI.
 
 Le bouton **Accueil**, entre Contact et Aide, affiche le même accueil que `/start`
 et quitte la recherche ou le contact en cours.
+
+## Fiches, correspondances et administration
+
+Les métadonnées sont conservées dans `film_metadata` : identifiants IMDb/TMDB,
+année, genres, chemin de jaquette et identifiant photo Telegram. Une correspondance
+confirmée utilise directement sa fiche externe pour les recherches suivantes.
+Les corrections manuelles de synopsis restent celles du catalogue. Les jaquettes
+manuelles restent prioritaires lors de l’enrichissement. Les photos envoyées en
+privé sont réutilisées via leur identifiant Telegram, sans nouveau téléchargement.
+Un cache absent peut être recréé en arrière-plan. Aucun appel OpenAI n’est effectué
+pour ces opérations.
+
+Une recherche avec un seul résultat affiche sa fiche complète. Plusieurs résultats
+conservent leurs liens de canal et proposent chacun un bouton **Fiche**. Une fiche
+présente la jaquette disponible, le titre, le synopsis, le lien du film et les boutons
+Contact, Accueil, Aide et **Signaler un problème**. Les signalements sont envoyés en
+privé à l’administrateur avec la publication concernée. Un signalement par minute
+et par utilisateur est autorisé. Seuls sa référence, son motif et son statut sont
+conservés pendant 30 jours ; le texte explicatif n’est pas stocké dans la base.
+
+Le bouton **Administration**, visible uniquement pour `ADMIN_USER_IDS`, permet de
+rechercher ou parcourir les films puis de corriger un titre, un synopsis, fournir
+un lien IMDb/TMDB, remplacer une jaquette par une photo Telegram, ou supprimer un
+film. L’association externe affiche le titre et l’année à confirmer avant toute
+modification. Une suppression exige aussi une confirmation liée au film, au compte
+et valable 15 minutes. Elle supprime la publication, puis ses références et données
+associées de la base. Les photos doivent être envoyées comme photos, pas fichiers.
+Le retour à Accueil, Aide ou une autre fonction annule la saisie en cours. Aucun
+rôle utilisateur ne permet de contourner l’abonnement obligatoire au canal.
+
+## Hasard et filtres
+
+**Hasard** exclut les dix derniers films tirés au cours des dernières 24 heures.
+Quand tous les films possibles ont été proposés, un nouveau cycle commence en
+évitant le dernier film si plusieurs choix existent. Les filtres **Genre** et
+**Année** se cumulent, s’appliquent seulement aux métadonnées identifiées, et peuvent
+être effacés avec **Tous les films**. Les préférences de filtres restent en mémoire
+jusqu’au redémarrage ; l’historique de tirages est conservé dans PostgreSQL.
+
+Les films existants peuvent être enrichis sans modifier les publications :
+
+```bash
+python3 /opt/maxxie-films-bot/enrich_catalogue.py
+```
+
+Ce programme s’exécute sous le compte du bot, avec `DATABASE_URL`, `CHANNEL_ID` et
+`TMDB_READ_TOKEN` dans son environnement. L’option `--confirmed fichier.json`
+importe des correspondances déjà vérifiées, sous la forme `{ "message_id": tmdb_id }`.
+Le bot prépare aussi automatiquement les métadonnées des nouveaux films en arrière-plan.
+Les titres ambigus ne sont pas associés arbitrairement.
+
+## Surveillance technique
+
+`maxxie-films-monitor.timer` contrôle toutes les cinq minutes le service du bot,
+PostgreSQL, le résultat de la dernière sauvegarde et l’existence d’une archive de
+moins de 27 heures. Une anomalie déclenche un message à `NOTIFY_CHAT_ID` ; une même
+anomalie ne déclenche au plus qu’un message par heure. Les erreurs Telegram et
+OpenAI rencontrées par le bot sont aussi signalées sans contenu des conversations
+ni secrets. Une panne de l’API Telegram ou du réseau peut empêcher l’alerte elle-même ;
+les journaux systemd restent disponibles. Cette surveillance s’exécute sur le même
+VPS et ne détecte donc pas son arrêt complet depuis l’extérieur.
+
+```bash
+systemctl status maxxie-films-monitor.timer
+sudo systemctl start maxxie-films-monitor.service
+```

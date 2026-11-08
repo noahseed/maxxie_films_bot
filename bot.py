@@ -9,6 +9,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 
 from catalogue import Catalogue
+from catalogue_ui import CatalogueUI
 from telegram_api import Telegram, TelegramError
 from openai_api import CinemaAI, OpenAIError
 from posters import TMDBPosters, PosterError
@@ -75,9 +76,10 @@ def clear_commands(api):
             api.call("deleteMyCommands", scope={"type": scope}, language_code=language)
 
 
-class Bot:
+class Bot(CatalogueUI):
     def __init__(self, api, catalogue, admins, allowed_users, channel_id=None, notify_chat_id=None,
                  ai=None, ai_per_user=20, ai_total=100, posters=None):
+        self.init_catalogue_ui()
         self.api, self.catalogue = api, catalogue
         self.admins = set(admins)
         self.channel_id = channel_id
@@ -129,11 +131,13 @@ class Bot:
         command, _, argument = text.partition(" ")
         command = command.split("@", 1)[0].lower()
         if not self.check_membership(chat_id):
+            self.feature_sessions.pop(user_id, None)
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
             self.ai_sessions.pop(user_id, None)
             return
         if not callback and text.startswith('/'):
+            self.feature_sessions.pop(user_id, None)
             self.ai_sessions.pop(user_id, None)
             self.search_sessions.pop(user_id, None)
         if not callback and command == "/id":
@@ -145,6 +149,9 @@ class Bot:
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
             self.ai_sessions.pop(user_id, None)
+            if self.handle_feature_callback(chat_id, data):
+                return
+            self.feature_sessions.pop(chat_id, None)
             if data == "assistant":
                 self.show_menu(chat_id, user_id)
             elif data.startswith("repondre:"):
@@ -191,9 +198,12 @@ class Bot:
                 self.show_menu(chat_id, user_id)
             return
         if text.startswith("/"):
+            self.feature_sessions.pop(chat_id, None)
             self.catalogue.clear_contact(user_id)
             self.catalogue.clear_reply(user_id)
             self.ai_sessions.pop(user_id, None)
+        elif self.handle_feature_message(chat_id, message):
+            return
         elif self.catalogue.reply_target(user_id):
             self.send_reply(user_id, message)
             return
@@ -269,7 +279,8 @@ class Bot:
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"},
                        {"text": "🎲 Hasard", "callback_data": "hasard"}],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
-                       {"text": "🏠 Accueil", "callback_data": "menu"}, HELP_BUTTON]]})
+                       {"text": "🏠 Accueil", "callback_data": "menu"}, HELP_BUTTON]]
+                      + ([[{"text": "🛠 Administration", "callback_data": "admin"}]] if user_id in self.admins else [])})
 
     def ask_ai(self, user_id, text):
         if not self.ai:
@@ -329,6 +340,7 @@ class Bot:
                 self.send(user_id, answer, reply_markup={'inline_keyboard': links + [[HELP_BUTTON]]})
             except OpenAIError as error:
                 LOG.warning('Assistant OpenAI indisponible (code %s).', error.code)
+                self.technical_alert('openai', f'Assistant IA indisponible (code {error.code}).')
                 self.send(user_id, "L’assistant IA est momentanément indisponible. Réessaie plus tard.",
                           reply_markup={'inline_keyboard': [[HELP_BUTTON]]})
             except TelegramError as error:
@@ -438,6 +450,7 @@ class Bot:
         self.send(chat_id, "Film publié dans le canal.")
 
     def poll_posters(self):
+        self.poll_features()
         self.poll_random()
         self.poll_synopses()
         if not self.posters:
@@ -454,6 +467,8 @@ class Bot:
                 poster = future.result()
                 if not poster:
                     self.catalogue.poster_status(channel_id, message_id, 'not_found')
+                elif self.catalogue.metadata(film_id).get('confirmed') and self.catalogue.metadata(film_id).get('tmdb_id') != poster.get('id'):
+                    self.catalogue.poster_status(channel_id, message_id, 'queued')
                 elif self.channel_id != channel_id:
                     self.catalogue.poster_status(channel_id, message_id, 'failed')
                 elif (self.catalogue.channel_message(channel_id, film_id) != message_id or
@@ -469,6 +484,7 @@ class Bot:
                     self.catalogue.poster_status(channel_id, message_id, 'cover_uncertain')
                     sending = True
                     self.api.edit_video_cover(channel_id, message_id, media, poster['path'])
+                    self.catalogue.save_metadata(film_id, {'tmdb_id': poster['id'], 'poster_file': str(poster['path'])})
                     self.catalogue.poster_status(channel_id, message_id, 'covered')
             except PosterError as error:
                 self.catalogue.poster_status(channel_id, message_id, 'failed')
@@ -491,7 +507,9 @@ class Bot:
         row = self.catalogue.next_poster(self.channel_id)
         if row:
             message_id, film_id, title = row
-            self.poster_job = (self.poster_executor.submit(self.posters.download, title),
+            exact = self.catalogue.metadata(film_id).get('tmdb_id')
+            future = self.poster_executor.submit(self.posters.download_exact, exact) if exact else self.poster_executor.submit(self.posters.download, title)
+            self.poster_job = (future,
                                self.channel_id, message_id, film_id, title)
 
     def poll_synopses(self):
@@ -506,6 +524,10 @@ class Bot:
                 result = future.result()
                 if self.catalogue.channel_message(channel_id, film_id) != message_id:
                     self.catalogue.synopsis_status(channel_id, message_id, 'stale')
+                elif (self.catalogue.get(film_id) or ('','',''))[2] != title:
+                    self.catalogue.synopsis_status(channel_id, message_id, 'queued')
+                elif result and self.catalogue.metadata(film_id).get('confirmed') and self.catalogue.metadata(film_id).get('tmdb_id') != result.get('id'):
+                    self.catalogue.synopsis_status(channel_id, message_id, 'queued')
                 elif not result:
                     self.catalogue.synopsis_status(channel_id, message_id, 'not_found')
                 else:
@@ -533,7 +555,9 @@ class Bot:
         row = self.catalogue.next_synopsis(self.channel_id)
         if row:
             message_id, film_id, title = row
-            self.synopsis_job = (self.poster_executor.submit(self.posters.synopsis, title),
+            exact = self.catalogue.metadata(film_id).get('tmdb_id')
+            future = self.poster_executor.submit(self.posters.synopsis_exact, exact) if exact else self.poster_executor.submit(self.posters.synopsis, title)
+            self.synopsis_job = (future,
                                  self.channel_id, message_id, film_id, title)
 
     def show_duplicate(self, chat_id, film_id, title, message_id):
@@ -548,13 +572,21 @@ class Bot:
         return f"https://t.me/c/{channel[4:]}/{message_id}"
 
     def show_random(self, chat_id):
-        film = self.catalogue.random_channel_film(self.channel_id)
+        filters = self.random_filters.get(chat_id, {})
+        film = self.catalogue.choose_random(self.channel_id, chat_id, **filters)
         if not film:
-            self.send(chat_id, "Aucun film disponible dans le canal pour le moment.",
-                      reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
+            self.send(chat_id, "Aucun film disponible pour ces filtres. Modifie les filtres ou reviens à tous les films.",
+                      reply_markup={"inline_keyboard": [[{'text':'🎭 Modifier les filtres','callback_data':'filtres'},
+                          {'text':'Tous les films','callback_data':'filtre:reset'}], [HELP_BUTTON]]})
+            return
+        data = self.catalogue.metadata(film[0])
+        cached = data.get('poster_file')
+        if data.get('photo_id') or (cached and Path(cached).is_file()):
+            self.send_random(chat_id, film, {'path': cached} if cached else None)
             return
         if self.posters and chat_id not in self.random_jobs and len(self.random_jobs) < 2:
-            self.random_jobs[chat_id] = (self.poster_executor.submit(self.posters.download, film[1]), film)
+            self.random_jobs[chat_id] = ((self.poster_executor.submit(self.posters.download_exact, data['tmdb_id']) if data.get('tmdb_id') else
+                self.poster_executor.submit(self.posters.download, film[1])), film)
         elif chat_id not in self.random_jobs:
             self.send_random(chat_id, film)
 
@@ -572,31 +604,51 @@ class Bot:
                 continue
             if not self.check_membership(chat_id):
                 continue
+            if poster:
+                self.catalogue.save_metadata(film[0], {'poster_file': str(poster['path']), **({'tmdb_id':poster['id']} if 'id' in poster else {})})
             self.send_random(chat_id, film, poster)
 
-    def send_random(self, chat_id, film, poster=None):
+    def send_random(self, chat_id, film, poster=None, random=True):
         film_id, title, message_id = film
         synopsis = self.catalogue.channel_synopsis(self.channel_id, film_id)
-        text = f"🎲 Un film au hasard :\n\n🎬 {title}\n\n" + (synopsis or "Synopsis indisponible pour ce film.")
+        text = (("🎲 Un film au hasard :" if random else "🎬 Fiche du film :") + f"\n\n🎬 {title}\n\n") + (synopsis or "Synopsis indisponible pour ce film.")
         markup = {"inline_keyboard": [
             [{"text": "🎬 Voir le film", "url": self.film_link(message_id)}],
             [{"text": "🎲 Un autre film", "callback_data": "hasard"}],
             [{"text": "✉️ Contact", "callback_data": "contact"},
              {"text": "🏠 Accueil", "callback_data": "menu"}, HELP_BUTTON]]}
-        if poster:
+        if random:
+            markup['inline_keyboard'].insert(2, [{'text':'🎭 Filtres','callback_data':'filtres'}])
+        else:
+            markup['inline_keyboard'].pop(1)
+        markup['inline_keyboard'].insert(-1,[{'text':'🚩 Signaler un problème','callback_data':f'report:{film_id}'}])
+        if chat_id in self.admins:
+            markup['inline_keyboard'].append([{'text':'🛠 Gérer ce film','callback_data':f'adminfilm:{film_id}'}])
+        data = self.catalogue.metadata(film_id)
+        if poster or data.get('photo_id'):
             try:
-                with Path(poster['path']).open('rb') as stream:
-                    body = stream.read(5_000_001)
-                if len(body) > 5_000_000 or not body.startswith(b'\xff\xd8\xff'):
-                    raise ValueError('Jaquette invalide')
+                params = {}
+                if data.get('photo_id'):
+                    params['photo'] = data['photo_id']
+                else:
+                    with Path(poster['path']).open('rb') as stream:
+                        body = stream.read(5_000_001)
+                    if len(body) > 5_000_000 or not body.startswith(b'\xff\xd8\xff'):
+                        raise ValueError('Jaquette invalide')
+                    params['_upload'] = body
                 caption = text
                 if len(caption.encode('utf-16-le')) // 2 > 1024:
                     caption = caption.encode('utf-16-le')[:2046].decode('utf-16-le', errors='ignore').rstrip() + '…'
-                self.api.call('sendPhoto', chat_id=chat_id, caption=caption,
-                              _upload=body, reply_markup=markup)
+                sent = self.api.call('sendPhoto', chat_id=chat_id, caption=caption, reply_markup=markup, **params)
+                if isinstance(sent, dict) and isinstance(sent.get('photo'), list) and sent['photo']:
+                    self.catalogue.save_metadata(film_id, {'photo_id': sent['photo'][-1]['file_id']})
                 return
             except (OSError, ValueError):
                 pass
+            except TelegramError as error:
+                if error.code != 400:
+                    raise
+                self.catalogue.save_metadata(film_id, {'photo_id':''})
         self.send(chat_id, text, reply_markup=markup)
 
     def list_films(self, chat_id, query="", page=0):
@@ -609,10 +661,14 @@ class Bot:
             self.send(chat_id, "Aucun film trouvé dans le canal.",
                       reply_markup={"inline_keyboard": [[HELP_BUTTON]]})
             return
-        keyboard = [[{"text": f"🎬 {title}"[:64], "url": self.film_link(message_id)}]
-                    for _, title, message_id in rows[:10]]
+        if len(rows) == 1:
+            self.show_card(chat_id, rows[0])
+            return
+        keyboard = [[{"text": f"🎬 {title}"[:64], "url": self.film_link(message_id)},
+                     {"text":"📋 Fiche", "callback_data":f"fiche:{film_id}"}]
+                    for film_id, title, message_id in rows[:10]]
         keyboard.append([HELP_BUTTON])
-        text = "🎬 Titres trouvés ou proches de ta recherche — ouvre le film dans le canal :"
+        text = "🎬 Résultats — ouvre le film dans le canal ou consulte sa fiche :"
         if len(rows) > 10:
             text += "\nPlus de 10 résultats : précise ta recherche."
         self.send(chat_id, text, reply_markup={"inline_keyboard": keyboard})
@@ -706,7 +762,8 @@ def main():
                 LOG.info("Bot vérifié ; réception des messages.")
             bot.poll_ai()
             bot.poll_posters()
-            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs or bot.poster_job or bot.synopsis_job or bot.random_jobs else 30,
+            bot.poll_metadata()
+            updates = api.call("getUpdates", offset=store.offset(), timeout=1 if bot.ai_jobs or bot.poster_job or bot.synopsis_job or bot.random_jobs or bot.feature_jobs or bot.metadata_job else 30,
                                allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"])
             for update in updates:
                 if stop.is_set():
@@ -718,6 +775,7 @@ def main():
                     bot.handle(update)
                 except TelegramError as error:
                     LOG.warning("Traitement non rejoué, résultat potentiellement incertain (code %s).", error.code)
+                    bot.technical_alert("telegram_write", f"Une opération Telegram a échoué (code {error.code}). Consulter le journal du service.")
                     if error.code == 429:
                         stop.wait(min(error.retry_after or 5, 300))
             backoff = 2
@@ -725,6 +783,7 @@ def main():
             if error.code in (401, 404, 409):
                 raise SystemExit(f"Telegram refuse la réception (code {error.code}).") from None
             LOG.warning("Réception indisponible (code %s).", error.code)
+            bot.technical_alert("telegram_read", f"Réception Telegram perturbée (code {error.code}).")
             stop.wait(min(error.retry_after or backoff, 300))
             backoff = min(backoff * 2, 60)
     if bot.ai_executor:

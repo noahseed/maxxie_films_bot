@@ -11,12 +11,12 @@ if ! id maxxie-films-bot >/dev/null 2>&1; then
 fi
 apt-get install -y postgresql python3-psycopg
 install -d -m 755 /opt/maxxie-films-bot
-install -m 644 database.py migrate_postgres.py bot.py catalogue.py search.py telegram_api.py openai_api.py posters.py backups.py deploy/setup_postgres.py deploy/configure.py deploy/configure_openai.py deploy/configure_posters.py /opt/maxxie-films-bot/
+install -m 644 catalogue_features.py catalogue_ui.py enrich_catalogue.py monitor.py database.py migrate_postgres.py bot.py catalogue.py search.py telegram_api.py openai_api.py posters.py backups.py deploy/setup_postgres.py deploy/configure.py deploy/configure_openai.py deploy/configure_posters.py /opt/maxxie-films-bot/
 install -d -m 700 /var/backups/maxxie-films-bot
-install -m 644 deploy/maxxie-films-bot.service deploy/maxxie-films-backup.service deploy/maxxie-films-backup.timer /etc/systemd/system/
+install -m 644 deploy/maxxie-films-bot.service deploy/maxxie-films-backup.service deploy/maxxie-films-backup.timer deploy/maxxie-films-monitor.service deploy/maxxie-films-monitor.timer /etc/systemd/system/
 systemctl enable --now postgresql
 python3 /opt/maxxie-films-bot/setup_postgres.py
 systemctl daemon-reload
-systemctl enable --now maxxie-films-backup.timer
+systemctl enable --now maxxie-films-backup.timer maxxie-films-monitor.timer
 echo 'Fichiers installés. Le service n’a pas été démarré.'
 echo 'Configurer : sudo python3 /opt/maxxie-films-bot/configure.py'

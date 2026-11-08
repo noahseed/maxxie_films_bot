@@ -167,7 +167,7 @@ class MembershipTests(unittest.TestCase):
         self.store.add({'file_id': 'three', 'file_unique_id': 'three'}, 'video', 'Film non publié')
         self.bot.list_films(2, 'film')
         buttons = self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']
-        self.assertEqual(len(buttons), 2)
+        self.assertEqual(len(buttons), 3)
         self.assertEqual(buttons[0][0]['url'], 'https://t.me/c/123/50')
 
     def test_channel_search_matches_accents_and_literal_wildcards(self):

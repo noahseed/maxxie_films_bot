@@ -6,7 +6,8 @@ from catalogue import Catalogue
 from database import Postgres
 
 TABLES = ('films', 'state', 'visitors', 'ai_usage', 'poster_jobs', 'synopsis_jobs',
-          'video_messages', 'contact_requests', 'contact_threads', 'reply_sessions', 'channel_films')
+          'video_messages', 'contact_requests', 'contact_threads', 'reply_sessions', 'channel_films',
+          'film_metadata', 'random_history', 'film_reports', 'technical_alerts')
 
 
 def migrate(source, destination):
@@ -20,7 +21,11 @@ def migrate(source, destination):
             for table in TABLES:
                 if target.db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]:
                     raise ValueError('La destination doit être vide')
+            source_tables={row[0] for row in source.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             for table in TABLES:
+                if table not in source_tables:
+                    counts[table]=0
+                    continue
                 cursor = source.execute(f'SELECT * FROM {table}')
                 columns = [item[0] for item in cursor.description]
                 rows = cursor.fetchall()

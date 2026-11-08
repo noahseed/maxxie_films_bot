@@ -29,7 +29,7 @@ def make_backup(database, config, code, units, destination, keep=14):
     tmdb_config = config.with_name('maxxie-films-tmdb.env')
     if tmdb_config.is_file():
         sources['config/maxxie-films-tmdb.env'] = tmdb_config
-    for name in ('database.py', 'migrate_postgres.py', 'setup_postgres.py'):
+    for name in ('database.py', 'migrate_postgres.py', 'setup_postgres.py', 'catalogue_features.py', 'catalogue_ui.py', 'enrich_catalogue.py', 'monitor.py'):
         if (code / name).is_file():
             sources['code/' + name] = code / name
     for name in ('bot.py', 'catalogue.py', 'search.py', 'telegram_api.py', 'openai_api.py',
@@ -37,6 +37,9 @@ def make_backup(database, config, code, units, destination, keep=14):
         sources['code/' + name] = code / name
     for name in ('maxxie-films-bot.service', 'maxxie-films-backup.service', 'maxxie-films-backup.timer'):
         sources['systemd/' + name] = units / name
+    for name in ('maxxie-films-monitor.service', 'maxxie-films-monitor.timer'):
+        if (units / name).is_file():
+            sources['systemd/' + name] = units / name
     for path in ((*sources.values(),) if postgres else (database, *sources.values())):
         if not path.is_file():
             raise FileNotFoundError('Un fichier nécessaire à la sauvegarde est absent')

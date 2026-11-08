@@ -106,7 +106,11 @@ class TMDBPosters:
         movie = self.lookup(title, require_poster=True)
         if not movie:
             return None
-        query, _ = movie_query(title)
+        return self.download_movie(movie)
+
+    def download_movie(self, movie):
+        if not re.fullmatch(r'/[A-Za-z0-9_-]+\.jpg', movie.get("poster_path") or ""):
+            return None
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         image_path = movie['poster_path']
         digest = hashlib.sha256(image_path.encode()).hexdigest()[:16]
@@ -127,4 +131,45 @@ class TMDBPosters:
         for old in sorted(self.directory.glob('*.jpg'), key=lambda path: path.stat().st_mtime, reverse=True)[500:]:
             if old != target:
                 old.unlink()
-        return {'path': target, 'title': movie.get('title') or query, 'id': movie['id']}
+        return {'path': target, 'title': movie.get('title') or '', 'id': movie['id']}
+
+    def details(self, movie_id):
+        if type(movie_id) is not int or movie_id <= 0:
+            raise ValueError('Identifiant TMDB invalide')
+        movie = json.loads(self._get('api.themoviedb.org', f'/3/movie/{movie_id}?language=fr-FR'))
+        if movie.get('id') != movie_id:
+            raise PosterError()
+        return movie
+
+    def resolve(self, reference):
+        imdb = re.fullmatch(r'https://(?:www\.)?imdb\.com/(?:fr/)?title/(tt[0-9]+)/?', reference.strip())
+        tmdb = re.fullmatch(r'https://(?:www\.)?themoviedb\.org/movie/([0-9]+)(?:-[^/?#]+)?/?', reference.strip())
+        if imdb:
+            results = json.loads(self._get('api.themoviedb.org', '/3/find/' + imdb[1] + '?external_source=imdb_id&language=fr-FR')).get('movie_results', [])
+            if len(results) != 1:
+                return None
+            return self.details(results[0]['id'])
+        if tmdb:
+            return self.details(int(tmdb[1]))
+        raise ValueError('Envoie un lien IMDb ou TMDB de film.')
+
+    def bundle(self, title, movie_id=None):
+        movie = self.details(movie_id) if movie_id else self.lookup(title)
+        if not movie:
+            return None
+        if not movie_id:
+            movie = self.details(movie['id'])
+        poster = self.download_movie(movie)
+        return {'tmdb_id': movie['id'], 'imdb_id': movie.get('imdb_id') or '',
+                'year': (movie.get('release_date') or '')[:4],
+                'genres': [genre['name'] for genre in movie.get('genres', [])],
+                'overview': movie.get('overview') or '', 'resolved_title': movie.get('title') or title,
+                'poster_file': str(poster['path']) if poster else ''}
+
+    def download_exact(self, movie_id):
+        return self.download_movie(self.details(movie_id))
+
+    def synopsis_exact(self, movie_id):
+        movie = self.details(movie_id)
+        overview = movie.get('overview') or ''
+        return {'id': movie_id, 'overview': overview.strip()} if overview.strip() else None

@@ -1,0 +1,15 @@
+[Unit]
+Description=Surveillance du bot Maxxie Films et des sauvegardes
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/maxxie-films-bot.env
+ExecStart=/usr/bin/python3 -B /opt/maxxie-films-bot/monitor.py
+User=root
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/maxxie-films-bot
+TimeoutStartSec=60
