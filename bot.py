@@ -240,16 +240,12 @@ class Bot(CatalogueUI):
             self.show_help(chat_id, user_id)
         elif command == "/start":
             self.show_menu(chat_id, user_id)
-        elif command == "/catalogue":
-            self.show_menu(chat_id, user_id)
         elif command == "/recherche":
             if argument.strip():
                 self.list_films(chat_id, argument.strip()[:200])
             else:
                 self.search_sessions[user_id] = time.monotonic()
                 self.send(chat_id, "🔎 Envoie le titre du film que tu recherches.")
-        elif command in ("/publier", "/supprimer"):
-            self.show_menu(chat_id, user_id)
         elif text and not text.startswith("/"):
             if time.monotonic() - self.search_sessions.get(user_id, float('-inf')) < 900:
                 self.search_sessions[user_id] = time.monotonic()
@@ -268,8 +264,7 @@ class Bot(CatalogueUI):
             "/recherche — Saisir ensuite le titre à rechercher.\n"
             "/id — Afficher ton identifiant Telegram.\n\n"
             "Écris directement pour discuter avec l’IA cinéma. Le bouton Contact "
-            "transmet tes messages à l’administrateur. Aide quitte la recherche ou le contact.\n\n"
-            "Anciennes commandes : /catalogue, /publier et /supprimer ouvrent uniquement l’accueil.")
+            "transmet tes messages à l’administrateur. Aide quitte la recherche ou le contact.")
 
     def show_menu(self, chat_id, user_id, text=None):
         self.send(chat_id, text or HELP + (ADMIN_HELP if user_id in self.admins else ""),

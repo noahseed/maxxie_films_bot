@@ -67,13 +67,15 @@ class BotTests(unittest.TestCase):
         self.bot.handle({'callback_query': {'id': 'q', 'from': {'id': 2}, 'data': 'film:1', 'message': {'chat': {'id': 2, 'type': 'private'}}}})
         self.assertEqual(self.api.call.call_args.kwargs['reply_markup']['inline_keyboard'][0][0]['url'], 'https://t.me/c/123/50')
 
-    def test_legacy_catalogue_command_opens_menu_without_browsing(self):
-        for number in range(12):
-            self.store.add({'file_id': str(number), 'file_unique_id': str(number)}, 'video', str(number))
-        self.bot.handle(message(2, text='/catalogue'))
-        keyboard = self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']
-        self.assertNotIn('catalogue', str(keyboard))
-        self.assertNotIn('film:', str(keyboard))
+    def test_removed_commands_do_not_respond_or_modify_catalogue(self):
+        self.store.add(self.media, 'video', 'Un film')
+        for user in (1, 2):
+            for command in ('/catalogue', '/publier 1', '/supprimer 1', '/catalogue@maxxie_films_bot'):
+                self.api.reset_mock()
+                self.bot.handle(message(user, text=command))
+                self.assertFalse(any(call.args[0] in ('sendMessage','sendVideo','sendDocument','deleteMessages')
+                                     for call in self.api.call.call_args_list))
+                self.assertIsNotNone(self.store.get(1))
 
 
 if __name__ == '__main__':

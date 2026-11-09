@@ -89,7 +89,8 @@ class MembershipTests(unittest.TestCase):
             response = self.api.call.call_args.kwargs
             for command in ('/start', '/aide', '/help', '/recherche', '/id'):
                 self.assertIn(command, response['text'])
-            self.assertNotIn('/film', response['text'])
+            for removed in ('/film', '/catalogue', '/publier', '/supprimer'):
+                self.assertNotIn(removed, response['text'])
             self.assertEqual(response['reply_markup']['inline_keyboard'][2][2],
                              {'text': '❓ Aide', 'callback_data': 'aide'})
 

@@ -412,8 +412,8 @@ les limitations Telegram suspendent les modifications pendant le délai demandé
 Aucun appel OpenAI n’est utilisé pour les synopsis.
 
 Le bouton **Aide**, à droite de Contact, affiche les commandes `/start`, `/aide`
-(alias `/help`), `/recherche titre` et `/id`. Les anciennes commandes `/catalogue`,
-`/publier` et `/supprimer` sont signalées comme simples raccourcis vers l’accueil.
+(alias `/help`), `/recherche titre` et `/id`. Les commandes `/catalogue`,
+`/publier` et `/supprimer` sont supprimées : elles ne déclenchent aucune action.
 Les boutons Aide et les commandes `/aide` et `/help` quittent le mode en cours.
 
 Le bouton **Hasard** propose un film choisi dans le catalogue du canal, avec un lien
