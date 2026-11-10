@@ -495,3 +495,11 @@ VPS et ne détecte donc pas son arrêt complet depuis l’extérieur.
 systemctl status maxxie-films-monitor.timer
 sudo systemctl start maxxie-films-monitor.service
 ```
+
+## Tests sur GitHub Actions
+
+Le workflow **Tests du bot** s’exécute à chaque push et pull request, et peut être
+lancé manuellement dans l’onglet Actions. Il exécute les tests unitaires avec
+Python 3.11, 3.13 et 3.14, puis la suite PostgreSQL et les tests de migration avec
+Python 3.13 et un conteneur PostgreSQL 17 isolé. Il n’utilise aucun secret Telegram,
+OpenAI ou TMDB et ne déploie rien sur le VPS.
