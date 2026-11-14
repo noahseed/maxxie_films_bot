@@ -59,7 +59,7 @@ class MembershipTests(unittest.TestCase):
             self.assertEqual('recherche' in str(response['reply_markup']), expected)
         markup = self.api.call.call_args.kwargs['reply_markup']['inline_keyboard']
         self.assertEqual(markup[0][0]['url'], 'https://t.me/maxxie_films')
-        self.assertEqual(markup[1][0]['callback_data'], 'abonnement')
+        self.assertEqual(markup[2][0]['callback_data'], 'abonnement')
 
     def test_telegram_failure_blocks_send_and_offers_retry(self):
         self.member = TelegramError(403)
@@ -91,7 +91,7 @@ class MembershipTests(unittest.TestCase):
                 self.assertIn(command, response['text'])
             for removed in ('/film', '/catalogue', '/publier', '/supprimer'):
                 self.assertNotIn(removed, response['text'])
-            self.assertEqual(response['reply_markup']['inline_keyboard'][2][2],
+            self.assertEqual(response['reply_markup']['inline_keyboard'][3][2],
                              {'text': '❓ Aide', 'callback_data': 'aide'})
 
     def test_random_button_uses_only_channel_films(self):

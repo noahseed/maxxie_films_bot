@@ -12,8 +12,8 @@ Les fichiers restent chez Telegram ; le VPS conserve leurs références dans Pos
 ## Utilisation
 
 Le menu propose **Rechercher un film** et **Lire les règles** sur la première ligne,
-**Rejoindre le canal** et **Hasard** sur la deuxième, puis **Contact**, **Accueil** et **Aide**
-sur la troisième. Le règlement s’affiche en privé avec un retour au menu.
+**Rejoindre le canal** et **Hasard** sur la deuxième, **Visiter le site web** sur la troisième, puis **Contact**,
+**Accueil** et **Aide** sur la quatrième. Le règlement s’affiche en privé avec un retour au menu.
 L’option Catalogue a été retirée ; les anciens boutons de
 catalogue et de pagination reviennent au menu. Cliquer sur un titre ouvre
 son message dans le canal. Seuls les films indexés dans ce canal sont proposés. La recherche demande simplement de saisir un titre, sans commande.

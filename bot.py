@@ -22,6 +22,7 @@ HELP = ("🎬 Maxxie Films\n\n"
         "Les résultats ouvrent les films directement dans le canal. Bonne séance !")
 ADMIN_HELP = ("\n\nAdministration : envoie une vidéo pour la publier dans le canal "
               "avec son nom de fichier sans .mp4.")
+WEBSITE_BUTTON = {"text": "Visiter le site web", "url": "https://maxxiefilms.rondeau-cameira.fr"}
 HELP_BUTTON = {"text": "❓ Aide", "callback_data": "aide"}
 RULES = ("📜 Règles de Maxxie Films\n\n"
          "• Respecte les autres membres et les administrateurs.\n"
@@ -273,6 +274,7 @@ class Bot(CatalogueUI):
                        {"text": "📜 Lire les règles", "callback_data": "regles"}],
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"},
                        {"text": "🎲 Hasard", "callback_data": "hasard"}],
+                      [WEBSITE_BUTTON],
                       [{"text": "✉️ Contact", "callback_data": "contact"},
                        {"text": "🏠 Accueil", "callback_data": "menu"}, HELP_BUTTON]]
                       + ([[{"text": "🛠 Administration", "callback_data": "admin"}]] if user_id in self.admins else [])})
@@ -698,6 +700,7 @@ class Bot(CatalogueUI):
                   reply_markup={"inline_keyboard": [
                       [{"text": "🎬 Rejoindre le canal", "url": "https://t.me/maxxie_films"},
                        {"text": "🎲 Hasard", "callback_data": "hasard"}],
+                      [WEBSITE_BUTTON],
                       [{"text": "✅ J’ai rejoint le canal", "callback_data": "abonnement"}]]})
         return False
 
